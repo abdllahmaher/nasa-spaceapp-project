@@ -355,13 +355,14 @@
 /* ---------------------------------------------------------------- modals */
 
 .modal-layer {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: 24px;
+  overflow-y: auto;
   background:
     radial-gradient(circle at 50% 30%, rgba(224, 145, 159, 0.08), transparent 55%),
     rgba(8, 5, 10, 0.74);
@@ -370,7 +371,8 @@
 
 .modal-card {
   width: min(590px, 100%);
-  max-height: calc(100% - 6px);
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
   overflow: auto;
   padding: 21px 23px;
   border-radius: 15px;

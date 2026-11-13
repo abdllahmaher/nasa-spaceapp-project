@@ -132,7 +132,9 @@ export default function App() {
           <h1>Mars Outpost</h1>
         </div>
         <div className="app-header-right">
-          <span className="app-tag">Sol {state.day} · Jezero</span>
+          <span className="app-tag">
+            Sol {phase === "report" ? (report?.day ?? state.day) : state.day} · Jezero
+          </span>
           <button type="button" className="text-button" onClick={handleReset}>
             Reset
           </button>

@@ -54,6 +54,16 @@ export default function GameCanvas({
     const entities = prepareEntities(SCENE.entities);
     const rocket = entities.find((entity) => entity.id === "arrival-rocket");
 
+    // Temporary QA hook: lets the headless harness place the commander.
+    window.__MARS_QA__ = {
+      player,
+      entities,
+      teleport(x, y = player.y) {
+        player.x = x;
+        player.y = y;
+      },
+    };
+
     let images = new Map();
     let panoramas = [];
     let spritesheet = null;
