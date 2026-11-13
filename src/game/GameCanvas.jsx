@@ -16,8 +16,28 @@ import {
   drawPrompt,
 } from "./engine/render";
 
-export default function GameCanvas() {
+export default function GameCanvas({
+  paused = false,
+  inputEnabled = true,
+  startLanded = false,
+  onInteract,
+  onIntroComplete,
+}) {
   const canvasRef = useRef(null);
+
+  // The effect runs once, so live props are read through refs.
+  const pausedRef = useRef(paused);
+  const inputEnabledRef = useRef(inputEnabled);
+  const onInteractRef = useRef(onInteract);
+  const onIntroCompleteRef = useRef(onIntroComplete);
+  const startLandedRef = useRef(startLanded);
+
+  useEffect(() => {
+    pausedRef.current = paused;
+    inputEnabledRef.current = inputEnabled;
+    onInteractRef.current = onInteract;
+    onIntroCompleteRef.current = onIntroComplete;
+  }, [paused, inputEnabled, onInteract, onIntroComplete]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -32,6 +52,7 @@ export default function GameCanvas() {
     const player = createPlayer();
     const camera = createCamera(player.x);
     const entities = prepareEntities(SCENE.entities);
+    const rocket = entities.find((entity) => entity.id === "arrival-rocket");
 
     let images = new Map();
     let panoramas = [];
@@ -39,6 +60,12 @@ export default function GameCanvas() {
     let period = 1;
     let debug = false;
     let disposed = false;
+    let introDone = startLandedRef.current;
+    let wasPaused = false;
+
+    if (startLandedRef.current) {
+      rocket?.behavior?.skip?.();
+    }
 
     const ready = () => panoramas.length > 0 && spritesheet !== null;
 
@@ -96,8 +123,8 @@ export default function GameCanvas() {
 
       for (const item of drawables) item.draw();
 
-      // 3. Interaction prompt.
-      if (player.action !== "mine" && player.z <= 0) {
+      // 3. Interaction prompt (only while the commander is in control).
+      if (inputEnabledRef.current && !pausedRef.current && player.z <= 0) {
         const target = findInteractable(
           entities,
           period,
@@ -115,8 +142,34 @@ export default function GameCanvas() {
     };
 
     const update = (dt) => {
-      for (const entity of entities) entity.behavior?.update?.(dt);
-      updatePlayer(player, dt, input, entities, period);
+      const pausedNow = pausedRef.current;
+
+      if (pausedNow) {
+        // Drop any keys held when a modal opened, so closing it doesn't make
+        // the commander walk or interact unexpectedly.
+        if (!wasPaused) input.clear();
+        wasPaused = true;
+      } else {
+        wasPaused = false;
+
+        for (const entity of entities) entity.behavior?.update?.(dt);
+
+        if (inputEnabledRef.current) {
+          updatePlayer(player, dt, input, entities, period);
+
+          if (player.pendingInteraction) {
+            const request = player.pendingInteraction;
+            player.pendingInteraction = null;
+            onInteractRef.current?.(request);
+          }
+        }
+
+        if (!introDone && rocket?.behavior?.getState?.() === "landed") {
+          introDone = true;
+          onIntroCompleteRef.current?.();
+        }
+      }
+
       camera.update(dt, player.x);
       if (input.consume("debug")) debug = !debug;
       draw();
@@ -152,9 +205,9 @@ export default function GameCanvas() {
       <canvas
         ref={canvasRef}
         className="game-canvas"
-        aria-label="Mars surface. Move with WASD or arrows, Space to jump, E to fix, F2 for debug."
+        aria-label="Mars surface. Move with WASD or arrows, Space to jump, E to inspect or talk, F2 for debug."
       />
-      <span className="game-badge">Layla · Surface EVA</span>
+      <span className="game-badge">Layla · Commander · Surface EVA</span>
     </div>
   );
 }

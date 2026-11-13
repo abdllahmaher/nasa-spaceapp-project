@@ -17,7 +17,7 @@ export const ROCKS = [
     sprite: { src: SOURCE, bleed: 2, frame: { x: 987, y: 693, w: 190, h: 107 } },
     x: 0.1028,
     y: 441,
-    scale: SCALE,
+    scale: SCALE/2,
     perspective: false,
     mirror: true,
     blocking: true,

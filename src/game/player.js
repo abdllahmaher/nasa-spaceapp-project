@@ -37,6 +37,7 @@ export function createPlayer() {
     fixTimer: 0,
     fixTarget: null, // { entityId, worldX }
     fixHitTimer: 0,
+    pendingInteraction: null, // { targetId, entityId, label }
   };
 }
 
@@ -80,10 +81,22 @@ export function updatePlayer(player, dt, input, entities, period) {
   if (input.consume("fix") && grounded) {
     const target = findInteractable(entities, period, player.x, player.y, WORLD.interactRange);
     if (target) {
-      player.fixTimer = MINE_SECONDS;
-      player.fixTarget = { entityId: target.entity.id, worldX: target.worldX };
-      player.fixHitTimer = 0.4;
-      player.facing = target.worldX >= player.x ? 1 : -1;
+      const interaction = target.entity.interactive;
+
+      // Story interactions open a modal; plain props keep the repair animation.
+      if (interaction && typeof interaction === "object" && interaction.targetId) {
+        player.pendingInteraction = {
+          targetId: interaction.targetId,
+          entityId: target.entity.id,
+          label: interaction.label,
+        };
+        player.facing = target.worldX >= player.x ? 1 : -1;
+      } else {
+        player.fixTimer = MINE_SECONDS;
+        player.fixTarget = { entityId: target.entity.id, worldX: target.worldX };
+        player.fixHitTimer = 0.4;
+        player.facing = target.worldX >= player.x ? 1 : -1;
+      }
     }
   }
 

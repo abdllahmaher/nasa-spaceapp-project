@@ -50,6 +50,11 @@ export function createInput(target = window) {
       const y = (held.has("down") ? 1 : 0) - (held.has("up") ? 1 : 0);
       return { x, y };
     },
+    // Called when a modal opens/closes so held keys don't leak into gameplay.
+    clear() {
+      held.clear();
+      pressed.clear();
+    },
     destroy() {
       target.removeEventListener("keydown", onKeyDown);
       target.removeEventListener("keyup", onKeyUp);

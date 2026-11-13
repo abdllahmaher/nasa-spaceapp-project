@@ -1,3 +1,4 @@
+import { createIdleBehavior } from "./idle";
 import { createRocketBehavior } from "./rocket";
 
 /**
@@ -16,6 +17,8 @@ export function createBehavior(def) {
   switch (def.behavior.type) {
     case "rocket":
       return createRocketBehavior(def.sprite.clips, def.behavior.config);
+    case "idle":
+      return createIdleBehavior(def.sprite.clips, def.behavior.config);
     default:
       console.warn(`Unknown entity behavior: ${def.behavior.type}`);
       return null;

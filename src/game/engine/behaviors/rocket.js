@@ -39,6 +39,17 @@ export function createRocketBehavior(clips, config = {}) {
       return state === "landed";
     },
 
+    getState() {
+      return state;
+    },
+
+    // Used when resuming a save: the lander is already on the pad.
+    skip() {
+      state = "landed";
+      elapsed = settings.descentSeconds;
+      animTime = 0;
+    },
+
     getView() {
       const arriving = state === "arriving";
       const progress = Math.min(1, elapsed / settings.descentSeconds);

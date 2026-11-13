@@ -50,7 +50,11 @@ export const ROCKET_ENTITIES = [
     mirror: false,
     blocking: true,
     footR: 46,
-    interactive: true,
+    interactive: {
+      kind: "inspect",
+      targetId: "rocket",
+      label: "Inspect lander",
+    },
     shadow: true,
     behavior: {
       type: "rocket",

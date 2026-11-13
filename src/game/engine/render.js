@@ -132,6 +132,8 @@ export function drawPrompt(ctx, target, images, cameraLeft) {
 
   const x = target.worldX - cameraLeft;
   const y = top - 16;
+  const interaction = target.entity.interactive;
+  const label = typeof interaction === "object" ? interaction.label : null;
 
   ctx.save();
   ctx.globalAlpha = 0.92;
@@ -147,6 +149,30 @@ export function drawPrompt(ctx, target, images, cameraLeft) {
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("E", x, y + 0.5);
+
+  if (label) {
+    ctx.font = "600 10px ui-monospace, monospace";
+    const padding = 8;
+    const textWidth = ctx.measureText(label).width;
+    const boxWidth = textWidth + padding * 2;
+    const boxHeight = 22;
+    let boxX = x + 15;
+
+    // Keep the label inside the canvas when the entity is near the edge.
+    if (boxX + boxWidth > WORLD.width - 8) boxX = x - 15 - boxWidth;
+
+    ctx.fillStyle = "rgba(20, 10, 16, 0.82)";
+    ctx.strokeStyle = "rgba(255, 217, 224, 0.28)";
+    ctx.beginPath();
+    ctx.roundRect(boxX, y - boxHeight / 2, boxWidth, boxHeight, 6);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffd9e0";
+    ctx.textAlign = "left";
+    ctx.fillText(label, boxX + padding, y + 0.5);
+  }
+
   ctx.restore();
 }
 
