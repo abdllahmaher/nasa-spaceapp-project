@@ -15,7 +15,7 @@ export const OUTPOST_STATIONS = [
     id: "power-junction",
     sprite: { src: solarPanelUrl },
     x: 0.2975,
-    y: 484,
+    y: 464,
     scale: 1.15,
     repeat: false,
     mirror: false,
