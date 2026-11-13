@@ -9,7 +9,7 @@ function buildFrames(sheet, prefix, count) {
   return Array.from({ length: count }, (_, i) => sheet.frames[`${prefix}_${i}`].frame);
 }
 
-function crewEntity({ id, name, x, homeX, stationId, src, sheet }) {
+function crewEntity({ id, name, x, homeX, stationId, src, sheet, y = 492 }) {
   return {
     id,
     sprite: {
@@ -22,7 +22,7 @@ function crewEntity({ id, name, x, homeX, stationId, src, sheet }) {
     x,
     homeX,
     stationId,
-    y: 492,
+    y,
     scale: 0.72,
     repeat: false,
     mirror: false,
@@ -56,6 +56,7 @@ export const CREW_ENTITIES = [
     name: "Kai",
     x: 0.2445,
     homeX: 0.2854,
+    y: 400,
     stationId: "power-junction",
     src: kaiUrl,
     sheet: kaiSheet,
@@ -74,6 +75,7 @@ export const CREW_ENTITIES = [
     name: "Rex",
     x: 0.2465,
     homeX: 0.4002,
+    y: 400,
     stationId: "habitat-dome",
     src: rexUrl,
     sheet: rexSheet,

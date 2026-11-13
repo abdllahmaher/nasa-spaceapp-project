@@ -1,4 +1,4 @@
-import solarArrayUrl from "../../assets/props/solar_panels.png";
+import solarPanelUrl from "../../assets/props/solar_panel.png";
 import oxygenStationUrl from "../../assets/props/oxygen_station.png";
 import habitatDomeUrl from "../../assets/props/habitat_dome.png";
 
@@ -7,26 +7,21 @@ import habitatDomeUrl from "../../assets/props/habitat_dome.png";
  * target exists exactly once and never gets a duplicate in the mirrored world.
  *
  * `x` is a fraction of the world repeat period. The three stations are spaced
- * out so none of them crowds the lander or each other. The power station is
- * the widest: a solar array plus inverter cabinet.
+ * out so none of them crowds the lander or each other — there is a clear gap
+ * of roughly 45px between the edge of one prop and the edge of the next.
  */
 export const OUTPOST_STATIONS = [
   {
     id: "power-junction",
-    // A small solar power station: two rows of panels wired into a bus bar
-    // and an inverter cabinet, instead of a single lonely panel.
-    sprite: { src: solarArrayUrl },
-    x: 0.2995,
-    y: 464,
-    scale: 1,
+    sprite: { src: solarPanelUrl },
+    x: 0.2975,
+    y: 400,
+    scale: 1.15,
     repeat: false,
     mirror: false,
     blocking: true,
-    footR: 90,
+    footR: 30,
     shadow: true,
-    // Kai stands clear of the wide array while he bolts it together.
-    approach: 142,
-    workOffset: 96,
     behavior: { type: "station", config: { seconds: 2.0 } },
     interactive: {
       kind: "inspect",
@@ -42,7 +37,7 @@ export const OUTPOST_STATIONS = [
     scale: 1.15,
     repeat: false,
     mirror: false,
-    blocking: false,
+    blocking: true,
     footR: 30,
     shadow: true,
     behavior: { type: "station", config: { seconds: 2.0 } },
@@ -56,11 +51,11 @@ export const OUTPOST_STATIONS = [
     id: "habitat-dome",
     sprite: { src: habitatDomeUrl },
     x: 0.4123,
-    y: 487,
+    y: 400,
     scale: 1.25,
     repeat: false,
     mirror: false,
-    blocking: false,
+    blocking: true,
     footR: 58,
     shadow: true,
     behavior: { type: "station", config: { seconds: 2.0 } },
