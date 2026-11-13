@@ -415,7 +415,12 @@ export default function GameCanvas({
 
         if (!introDone) {
           updateIntro(dt);
-          camera.update(dt, WORLD.introFocusX);
+          // The camera pans with the crew as they head out to their posts, so
+          // nobody walks off the edge of the screen during the arrival.
+          const crewFocus = crew.length
+            ? crew.reduce((sum, member) => sum + member.x * period, 0) / crew.length
+            : WORLD.introFocusX;
+          camera.update(dt, Math.max(crewFocus, (rocket?.x ?? 0) * period));
           draw();
           return;
         }

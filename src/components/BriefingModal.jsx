@@ -10,7 +10,7 @@ export default function BriefingModal({ day, onBegin }) {
     <div className="vn-layer" role="dialog" aria-modal="true" aria-labelledby="briefing-title">
       <div className="vn-stage">
         <div className="vn-portrait-wrap">
-          <Portrait id={briefing.speaker} size={148} />
+          <Portrait id={briefing.speaker} size={200} />
         </div>
 
         <article className="vn-panel">
