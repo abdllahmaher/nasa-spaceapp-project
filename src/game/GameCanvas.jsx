@@ -228,7 +228,8 @@ export default function GameCanvas({
         member.behavior?.show?.();
         const station = stationOf(member);
         // Stand just left of the build site, then bolt it together.
-        const standX = station ? station.x - 56 / period : member.homeX ?? member.x;
+        const gap = station?.approach ?? 56;
+        const standX = station ? station.x - gap / period : member.homeX ?? member.x;
         member.introPhase = "walk";
         member.behavior?.walkTo?.(standX, index * 0.45);
       }
@@ -292,7 +293,7 @@ export default function GameCanvas({
         );
 
         if (actor && machine) {
-          const targetX = machine.x + 44 / period;
+          const targetX = machine.x + (machine.workOffset ?? 44) / period;
           actor.behavior?.walkTo?.(targetX);
           task = {
             token: next.token,
