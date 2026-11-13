@@ -45,13 +45,17 @@ function crewEntity({ id, name, x, homeX, stationId, src, sheet }) {
 /**
  * The three specialists wait inside the lander with the outpost parts. After
  * touchdown they step out and each one assembles their own station.
+ *
+ * `homeX` is where a crew member waits between jobs. The posts are spread
+ * out so every crew member stands in the clear gap between two stations
+ * instead of on top of one.
  */
 export const CREW_ENTITIES = [
   crewEntity({
     id: "kai",
     name: "Kai",
     x: 0.2445,
-    homeX: 0.28,
+    homeX: 0.269,
     stationId: "power-junction",
     src: kaiUrl,
     sheet: kaiSheet,
@@ -60,7 +64,7 @@ export const CREW_ENTITIES = [
     id: "nova",
     name: "Nova",
     x: 0.2455,
-    homeX: 0.316,
+    homeX: 0.326,
     stationId: "life-support",
     src: novaUrl,
     sheet: novaSheet,
@@ -69,7 +73,7 @@ export const CREW_ENTITIES = [
     id: "rex",
     name: "Rex",
     x: 0.2465,
-    homeX: 0.352,
+    homeX: 0.3828,
     stationId: "habitat-dome",
     src: rexUrl,
     sheet: rexSheet,

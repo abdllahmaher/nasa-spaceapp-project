@@ -85,7 +85,7 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
     >
       <div className="vn-stage">
         <div className="vn-portrait-wrap">
-          <Portrait id={content.speaker} size={142} />
+          <Portrait id={content.speaker} size={190} />
         </div>
 
         <article className="vn-panel">
