@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import GameCanvas from "./game/GameCanvas";
 import HUD from "./components/HUD";
 import BriefingModal from "./components/BriefingModal";
@@ -17,7 +18,20 @@ import "./App.css";
 const SAVED_MISSION = loadGame();
 
 export default function App() {
-  const [state, setState] = useState(() => SAVED_MISSION ?? createInitialState());
+  const [state, setState] = useState(() => {
+    if (!SAVED_MISSION) return createInitialState();
+    // One-time migration for older saves: Sol 1 is now construction-only,
+    // and every Sol starts with a fresh set of crew check-ins.
+    if ((SAVED_MISSION.version ?? 1) < 2) {
+      return { ...SAVED_MISSION, version: 2, seen: [], decisions: {} };
+    }
+    if (SAVED_MISSION.day === 2 && SAVED_MISSION.completedEvents?.includes("day01")) {
+      return { ...SAVED_MISSION, seen: [], decisions: {} };
+    }
+    return SAVED_MISSION;
+  });
+  const stateRef = useRef(state);
+  useEffect(() => { stateRef.current = state; }, [state]);
   const [phase, setPhase] = useState(() => {
     if (!SAVED_MISSION) return "intro";
     return SAVED_MISSION.day > 1 ? "daybreak" : "playing";
@@ -27,6 +41,12 @@ export default function App() {
   const [cinematic, setCinematic] = useState(null);
   const [walkTo, setWalkTo] = useState(null);
   const [toast, setToast] = useState("");
+  const [toastKind, setToastKind] = useState("success");
+  const [crewCommand, setCrewCommand] = useState(null);
+  const crewCommandStateRef = useRef(crewCommand);
+  useEffect(() => { crewCommandStateRef.current = crewCommand; }, [crewCommand]);
+  const [showSleepPrompt, setShowSleepPrompt] = useState(false);
+  const crewCommandToken = useRef(0);
   const toastTimer = useRef(null);
   const taskToken = useRef(0);
   const walkToken = useRef(0);
@@ -44,7 +64,19 @@ export default function App() {
     ),
   }));
   const canEndDay = objectives.every((objective) => objective.done);
+  const hazards = useMemo(() => {
+    const alerts = [];
+    if (state.resources.lifeSupportCondition <= 35) alerts.push({ level: "critical", title: "OXYGEN SYSTEM CRITICAL", detail: "Life-support condition is dangerously low." });
+    else if (state.resources.lifeSupportCondition <= 55) alerts.push({ level: "warning", title: "LIFE-SUPPORT WARNING", detail: "Check the oxygen system soon." });
+    if (state.resources.powerCondition <= 30 || state.resources.storedPower <= 20) alerts.push({ level: "critical", title: "POWER FAILURE RISK", detail: "Power reserves or generator condition are critical." });
+    else if (state.resources.powerCondition <= 50 || state.resources.storedPower <= 35) alerts.push({ level: "warning", title: "LOW POWER", detail: "Reduce consumption and inspect the power junction." });
+    if (state.resources.habitatSafety <= 45) alerts.push({ level: "critical", title: "HABITAT SAFETY ALERT", detail: "The habitat needs immediate inspection." });
+    if (state.resources.food <= 20) alerts.push({ level: "warning", title: "FOOD RESERVES LOW", detail: "Food supplies are running low." });
+    return alerts;
+  }, [state.resources]);
   const status = buildStatus(state);
+  const weather = day.briefing?.weather ?? day.weather ?? {};
+  const weatherLevel = weather.level ?? "clear";
 
   // Which places still need a visit? Drawn as bouncing pins in the world.
   const markers = {};
@@ -56,10 +88,11 @@ export default function App() {
     }
   }
 
-  const paused = !["intro", "playing", "cinematic"].includes(phase);
+  const paused = !["intro", "playing", "cinematic", "sleeping", "waking"].includes(phase);
   const inputEnabled = phase === "playing";
 
-  const showToast = useCallback((message) => {
+  const showToast = useCallback((message, kind = "success") => {
+    setToastKind(kind);
     setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(""), 3200);
@@ -71,6 +104,34 @@ export default function App() {
     },
     [],
   );
+
+  useEffect(() => {
+    setShowSleepPrompt(false);
+    if (!canEndDay || phase !== "playing") return undefined;
+    const timer = window.setTimeout(() => setShowSleepPrompt(true), 7000);
+    return () => window.clearTimeout(timer);
+  }, [canEndDay, phase, state.day]);
+
+  const issueCrewCommand = (type) => {
+    crewCommandToken.current += 1;
+    setCrewCommand({ token: crewCommandToken.current, type });
+  };
+
+  const handleCrewCommandDone = useCallback((token) => {
+    const current = crewCommandStateRef.current;
+    if (!current || current.token !== token) return;
+    crewCommandStateRef.current = null;
+    setCrewCommand(null);
+    if (current.type === "sleep") {
+      const { state: next, report: nextReport } = endDay(stateRef.current);
+      setState(next);
+      saveGame(next);
+      setReport(nextReport);
+      setPhase("report");
+    } else {
+      setPhase("daybreak");
+    }
+  }, []);
 
   const handleInteract = useCallback(
     (request) => {
@@ -164,17 +225,15 @@ export default function App() {
 
   const handleEndDay = () => {
     if (!canEndDay) return;
-    const { state: next, report: nextReport } = endDay(state);
-    setState(next);
-    saveGame(next);
     setActive(null);
-    setReport(nextReport);
-    setPhase("report");
+    setShowSleepPrompt(false);
+    setPhase("sleeping");
+    issueCrewCommand("sleep");
   };
 
   const handleContinue = () => {
-    setReport(null);
-    setPhase("daybreak");
+    setPhase("waking");
+    issueCrewCommand("wake");
   };
 
   const handleReplay = () => {
@@ -219,6 +278,8 @@ export default function App() {
           markers={markers}
           cinematic={cinematic}
           walkTo={walkTo}
+          crewCommand={crewCommand}
+          onCrewCommandDone={handleCrewCommandDone}
           onInteract={handleInteract}
           onIntroComplete={handleIntroComplete}
           onCinematicDone={handleCinematicDone}
@@ -233,6 +294,7 @@ export default function App() {
             onEndDay={handleEndDay}
             onTrack={handleTrack}
             canEndDay={canEndDay}
+            showSleepPrompt={showSleepPrompt}
           />
         )}
 
@@ -261,9 +323,60 @@ export default function App() {
           <EndDayReport report={report} onContinue={handleContinue} />
         )}
 
-        {phase === "daybreak" && <DayBreak report={report} onReplay={handleReplay} />}
+        {phase === "daybreak" && <DayBreak report={report} onBegin={() => { setReport(null); setPhase("playing"); }} />}
 
-        <Toast message={toast} />
+        <AnimatePresence>
+          {weatherLevel !== "clear" && ["playing", "interaction", "cinematic"].includes(phase) && (
+            <motion.div
+              className={`weather-fx weather-${weatherLevel}`}
+              aria-hidden="true"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: weatherLevel === "storm" ? 0.19 : weatherLevel === "dust" ? 0.12 : 0.07 }}
+              exit={{ opacity: 0 }}
+            >
+              {Array.from({ length: weatherLevel === "storm" ? 13 : weatherLevel === "dust" ? 7 : 4 }, (_, index) => (
+                <motion.span
+                  key={index}
+                  className={`weather-particle weather-particle-${weatherLevel}`}
+                  style={{ left: `${7 + index * 14}%`, top: `${18 + (index * 13) % 55}%` }}
+                  animate={{
+                    x: weatherLevel === "storm" ? [0, -55, -115] : weatherLevel === "dust" ? [0, -30, -65] : [0, -8, -16],
+                    y: weatherLevel === "storm" ? [0, 12, -6] : weatherLevel === "dust" ? [0, 8, -3] : [0, -5, -10],
+                    opacity: [0, 0.55, 0],
+                  }}
+                  transition={{ duration: weatherLevel === "storm" ? 4.5 + index % 3 : weatherLevel === "dust" ? 7 + index % 3 : 10 + index, repeat: Infinity, delay: index * 0.35, ease: "linear" }}
+                />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {hazards.length > 0 && ["playing", "interaction", "cinematic"].includes(phase) && (
+            <motion.aside className="hazard-stack" aria-label="Outpost hazard warnings" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }}>
+              {hazards.map((hazard) => (
+                <motion.div key={hazard.title} className={`hazard-card hazard-${hazard.level}`} animate={{ scale: [1, 1.012, 1] }} transition={{ duration: 2.2, repeat: Infinity }}>
+                  <span className="hazard-symbol">!</span>
+                  <div><strong>{hazard.title}</strong><p>{hazard.detail}</p></div>
+                </motion.div>
+              ))}
+            </motion.aside>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {(phase === "sleeping" || phase === "waking") && (
+            <motion.div className={`day-transition ${phase === "sleeping" ? "night-transition" : "morning-transition"}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 3.2, ease: "easeInOut" }}>
+              <motion.div className="transition-text" initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 1.1, duration: 1.8, ease: "easeInOut" }}>
+                <span>{phase === "sleeping" ? "END OF SOL" : "NEW SOL"}</span>
+                <h2>{phase === "sleeping" ? "Time to Rest, Crew" : "Sunrise on Mars"}</h2>
+                <p>{phase === "sleeping" ? "The crew is returning to the Airlock." : "The crew is heading back to their stations."}</p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <Toast message={toast} kind={toastKind} />
       </div>
 
       <footer className="app-footer">

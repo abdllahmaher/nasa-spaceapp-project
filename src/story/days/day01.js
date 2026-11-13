@@ -1,4 +1,4 @@
-import { DONKI_ADVISORY, JEZERO_SITE } from "../../data/nasa/sources";
+import { JEZERO_SITE } from "../../data/nasa/sources";
 
 /**
  * Sol 1: touchdown, the crew exit, three quick checks, and the power call.
@@ -12,41 +12,9 @@ export const DAY01 = {
   coordinates: JEZERO_SITE.coordinates,
 
   objectives: [
-    {
-      id: "inspect_power",
-      icon: "bolt",
-      label: "Check the power",
-      targets: ["power_junction"],
-      targetOpen: (target, state) => !state.seen.includes(target),
-      check: (state) => state.seen.includes("power_junction"),
-    },
-    {
-      id: "inspect_life_support",
-      icon: "drop",
-      label: "Check the air",
-      targets: ["life_support"],
-      targetOpen: (target, state) => !state.seen.includes(target),
-      check: (state) => state.seen.includes("life_support"),
-    },
-    {
-      id: "meet_crew",
-      icon: "crew",
-      label: "Meet the crew",
-      targets: ["kai", "nova", "rex"],
-      targetOpen: (target, state) => !state.seen.includes(target),
-      check: (state) => ["kai", "nova", "rex"].every((id) => state.seen.includes(id)),
-      progress: (state) =>
-        ["kai", "nova", "rex"].filter((id) => state.seen.includes(id)).length,
-      progressMax: 3,
-    },
-    {
-      id: "power_decision",
-      icon: "wrench",
-      label: "Pick a power plan",
-      targets: ["power_junction"],
-      targetOpen: (target, state) => !state.decisions[target],
-      check: (state) => Boolean(state.decisions.power_junction),
-    },
+    { id: "meet_kai_build", icon: "crew", label: "Get the power station ready with Kai", targets: ["kai"], targetOpen: (target, state) => !state.seen.includes(target), check: (state) => state.seen.includes("kai") },
+    { id: "meet_nova_build", icon: "crew", label: "Help Nova finish life support", targets: ["nova"], targetOpen: (target, state) => !state.seen.includes(target), check: (state) => state.seen.includes("nova") },
+    { id: "meet_rex_build", icon: "crew", label: "Check the habitat build with Rex", targets: ["rex"], targetOpen: (target, state) => !state.seen.includes(target), check: (state) => state.seen.includes("rex") },
   ],
 
   briefing: {
@@ -55,17 +23,18 @@ export const DAY01 = {
     speaker: "layla",
     lines: [
       "Touchdown! Everyone okay?",
-      "Before dark: check the power, check the air, and say hi to Kai, Nova and Rex.",
+      "Today is build day. Check in with Kai, Nova and Rex as they finish the outpost stations.",
     ],
-    hint: "Then choose what to do about the buzzing power box.",
+    hint: "No resource management today — just construction and crew check-ins.",
     startLabel: "Let's go!",
     site: JEZERO_SITE,
     weather: {
-      headline: "A small solar breeze",
-      level: "mild",
-      line: "A puff of solar wind is passing Mars today. No big storm.",
-      issuedAt: DONKI_ADVISORY.issuedAt,
-      source: "NASA DONKI · real data",
+      headline: "Morning ice haze",
+      level: "haze",
+      line: "NASA observations at Jezero have documented morning ice hazes and occasional ice clouds. This is an illustrative observed phenomenon, not a live forecast.",
+      issuedAt: "Jezero observations · Mars Year 36",
+      source: "NASA Perseverance atmospheric observations",
+      sourceUrl: "https://science.nasa.gov/blog/perseverance-pays-off-when-studying-the-martian-atmosphere/",
     },
   },
 
@@ -131,13 +100,7 @@ export const DAY01 = {
       eyebrow: "ENGINEER",
       title: "Kai",
       body: ["That power box is sparking!", "I can fix it tonight. Or we can take a closer look first."],
-      report: {
-        label: "Power box",
-        icon: "bolt",
-        resource: "powerCondition",
-        hint: "Sparking — needs a look.",
-      },
-      goto: { targetId: "power_junction", label: "Show me" },
+      report: null,
     },
 
     nova: {
@@ -145,13 +108,7 @@ export const DAY01 = {
       eyebrow: "AIR & WATER",
       title: "Nova",
       body: ["I keep the air and water clean.", "The filter needs help soon. Not today, though!"],
-      report: {
-        label: "Air machine",
-        icon: "drop",
-        resource: "lifeSupportCondition",
-        hint: "Air is good. Filter is clogging.",
-      },
-      goto: { targetId: "life_support", label: "Show me" },
+      report: null,
     },
 
     rex: {
@@ -159,13 +116,7 @@ export const DAY01 = {
       eyebrow: "SCIENCE",
       title: "Rex",
       body: ["That crater is full of secrets!", "Can I explore it tomorrow? Please?"],
-      report: {
-        label: "Home dome",
-        icon: "home",
-        resource: "habitatSafety",
-        hint: "Warm and safe inside.",
-      },
-      goto: { targetId: "habitat", label: "Show me" },
+      report: null,
     },
 
     habitat: {

@@ -9,6 +9,9 @@ export function findInteractable(entities, period, x, y, range) {
   let best = null;
 
   for (const entity of entities) {
+    // The player can initiate dialogue only with crew members. Buildings are
+    // destinations/quest context, never clickable conversation targets.
+    if (entity.interactive?.kind !== "talk") continue;
     if (!isEntityInteractive(entity)) continue;
 
     const worldX = nearestWorldX(entity, period, x);

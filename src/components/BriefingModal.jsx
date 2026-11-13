@@ -48,7 +48,12 @@ export default function BriefingModal({ day, onBegin }) {
             <PixelIcon name="star" size={11} />
             <span className="vn-weather-title">{briefing.weather.headline}</span>
             <span className="vn-weather-line">{briefing.weather.line}</span>
-            <span className="vn-weather-src">{briefing.weather.source}</span>
+            <span className="vn-weather-src">
+              {briefing.weather.source}
+              {briefing.weather.sourceUrl && (
+                <> · <a href={briefing.weather.sourceUrl} target="_blank" rel="noreferrer">NASA source</a></>
+              )}
+            </span>
           </div>
 
           <div className="vn-actions">

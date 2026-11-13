@@ -38,7 +38,7 @@ export function createPlayer() {
     fixTarget: null, // { entityId, worldX }
     fixHitTimer: 0,
     pendingInteraction: null,
-    // Click-to-move target: { x, faceX, targetId?, entityId?, label? }
+    // Click-to-move target: { x, y, faceX, targetId?, entityId?, label? }
     auto: null, // { targetId, entityId, label }
   };
 }
@@ -59,8 +59,10 @@ export function updatePlayer(player, dt, input, entities, period) {
       player.auto = null;
     } else {
       const dx = player.auto.x - player.x;
-      if (Math.abs(dx) <= 4) {
+      const dy = (player.auto.y ?? player.y) - player.y;
+      if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) {
         player.x = player.auto.x;
+        if (player.auto.y !== undefined) player.y = player.auto.y;
         const target = player.auto;
         player.auto = null;
         if (target.targetId) {
@@ -72,8 +74,13 @@ export function updatePlayer(player, dt, input, entities, period) {
         }
         player.facing = target.faceX >= player.x ? 1 : -1;
       } else {
-        player.x += Math.sign(dx) * Math.min(Math.abs(dx), WORLD.playerSpeed * dt);
-        player.facing = Math.sign(dx);
+        const distance = Math.hypot(dx, dy);
+        const step = Math.min(distance, WORLD.playerSpeed * dt);
+        if (distance > 0) {
+          player.x += (dx / distance) * step;
+          player.y += (dy / distance) * step * 0.72;
+        }
+        if (Math.abs(dx) > 1) player.facing = dx > 0 ? 1 : -1;
         autoMoving = true;
       }
     }

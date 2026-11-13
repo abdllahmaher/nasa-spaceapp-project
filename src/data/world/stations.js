@@ -1,6 +1,7 @@
 import solarPanelUrl from "../../assets/props/solar_panels.png";
 import oxygenStationUrl from "../../assets/props/oxygen_station.png";
 import habitatDomeUrl from "../../assets/props/habitat_dome.png";
+import airlockUrl from "../../assets/props/airlock.png";
 
 /**
  * Unique outpost stations. `repeat` and `mirror` are off so each interactive
@@ -46,6 +47,17 @@ export const OUTPOST_STATIONS = [
       targetId: "life_support",
       label: "Check life support",
     },
+  },
+  {
+    id: "airlock",
+    sprite: { src: airlockUrl },
+    x: 0.46,
+    y: 484,
+    scale: 1.35,
+    repeat: false,
+    mirror: false,
+    blocking: false,
+    shadow: true,
   },
   {
     id: "habitat-dome",
