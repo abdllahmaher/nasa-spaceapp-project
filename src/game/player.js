@@ -37,7 +37,9 @@ export function createPlayer() {
     fixTimer: 0,
     fixTarget: null, // { entityId, worldX }
     fixHitTimer: 0,
-    pendingInteraction: null, // { targetId, entityId, label }
+    pendingInteraction: null,
+    // Click-to-move target: { x, faceX, targetId?, entityId?, label? }
+    auto: null, // { targetId, entityId, label }
   };
 }
 
@@ -46,15 +48,47 @@ export function updatePlayer(player, dt, input, entities, period) {
   const fixing = player.fixTimer > 0;
 
   const { x: ax, y: ay } = fixing ? { x: 0, y: 0 } : input.axis();
-  const moving = ax !== 0 || ay !== 0;
-  const running = moving && input.isDown("run");
+  const userMoving = ax !== 0 || ay !== 0;
+  const running = userMoving && input.isDown("run");
+
+  // Click-to-move / "walk me there": slide toward the chosen spot, then fire
+  // the interaction it was pointing at. Any manual input cancels it.
+  let autoMoving = false;
+  if (player.auto) {
+    if (userMoving) {
+      player.auto = null;
+    } else {
+      const dx = player.auto.x - player.x;
+      if (Math.abs(dx) <= 4) {
+        player.x = player.auto.x;
+        const target = player.auto;
+        player.auto = null;
+        if (target.targetId) {
+          player.pendingInteraction = {
+            targetId: target.targetId,
+            entityId: target.entityId,
+            label: target.label,
+          };
+        }
+        player.facing = target.faceX >= player.x ? 1 : -1;
+      } else {
+        player.x += Math.sign(dx) * Math.min(Math.abs(dx), WORLD.playerSpeed * dt);
+        player.facing = Math.sign(dx);
+        autoMoving = true;
+      }
+    }
+  }
+
+  const moving = userMoving || autoMoving;
 
   if (moving) {
-    const length = Math.hypot(ax, ay) || 1;
-    const speed = WORLD.playerSpeed * (running ? WORLD.runMultiplier : 1);
-    player.x += (ax / length) * speed * dt;
-    player.y += (ay / length) * speed * 0.65 * dt;
-    if (ax !== 0) player.facing = ax > 0 ? 1 : -1;
+    if (userMoving) {
+      const length = Math.hypot(ax, ay) || 1;
+      const speed = WORLD.playerSpeed * (running ? WORLD.runMultiplier : 1);
+      player.x += (ax / length) * speed * dt;
+      player.y += (ay / length) * speed * 0.65 * dt;
+      if (ax !== 0) player.facing = ax > 0 ? 1 : -1;
+    }
 
     clampToArea(player, WORLD.walkArea);
     resolveEntityCollisions(player, entities, period);

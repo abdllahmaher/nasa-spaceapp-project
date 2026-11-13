@@ -175,13 +175,37 @@
   display: flex;
   align-items: center;
   gap: 7px;
+  width: 100%;
+  margin: 0;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
+  text-align: left;
   color: #efdae0;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.quest:hover:not(:disabled) {
+  background: rgba(255, 209, 102, 0.1);
+  color: #ffd166;
+}
+
+.quest:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .quest.is-done {
+  color: #9fe0c6;
+}
+
+.quest.is-done:disabled {
   color: #9fe0c6;
 }
 
@@ -721,6 +745,54 @@
   gap: 2px;
   max-width: 74px;
   color: #ffb066;
+}
+
+/* ------------------------------------------------------- officer report */
+
+.vn-report {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 7px 10px;
+  margin-top: 11px;
+  padding: 8px 10px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vn-report-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: 800 9.5px/1 ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--report-color);
+}
+
+.vn-report-track {
+  display: flex;
+  gap: 2px;
+  height: 9px;
+}
+
+.vn-report-track > span {
+  flex: 1;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.vn-report-track > span.is-filled {
+  background: var(--report-color);
+}
+
+.vn-report-hint {
+  grid-column: 1 / -1;
+  font: 600 9.5px/1.25 ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #d8b7c0;
 }
 
 /* ---------------------------------------------------------------- result */

@@ -14,6 +14,37 @@ const COST_ICONS = {
   habitatSafety: "home",
 };
 
+const REPORT_COLORS = {
+  bolt: "#ffd166",
+  drop: "#7ee0ff",
+  leaf: "#9df5a8",
+  home: "#ff9ecb",
+  wrench: "#ffb066",
+};
+
+function ReportBar({ report, resources }) {
+  if (!report) return null;
+
+  const value = Math.max(0, Math.min(100, resources?.[report.resource] ?? 0));
+  const filled = Math.round((value / 100) * 8);
+  const color = REPORT_COLORS[report.icon] ?? "#ffd166";
+
+  return (
+    <div className="vn-report" style={{ "--report-color": color }}>
+      <span className="vn-report-label">
+        <PixelIcon name={report.icon} size={11} />
+        {report.label}
+      </span>
+      <span className="vn-report-track" aria-hidden="true">
+        {Array.from({ length: 8 }, (_, i) => (
+          <span key={i} className={i < filled ? "is-filled" : ""} />
+        ))}
+      </span>
+      <span className="vn-report-hint">{report.hint}</span>
+    </div>
+  );
+}
+
 function CostPips({ cost }) {
   if (!cost) return null;
 
@@ -28,7 +59,7 @@ function CostPips({ cost }) {
   );
 }
 
-export default function InteractionModal({ content, resources, onChoose, onClose }) {
+export default function InteractionModal({ content, resources, onChoose, onGoto, onClose }) {
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === "Escape") onClose();
@@ -73,6 +104,8 @@ export default function InteractionModal({ content, resources, onChoose, onClose
             </div>
           )}
 
+          {!showChoices && <ReportBar report={content.report} resources={resources} />}
+
           {resultText && (
             <div className="vn-result">
               <PixelIcon name="star" size={16} />
@@ -110,6 +143,15 @@ export default function InteractionModal({ content, resources, onChoose, onClose
             <span className="vn-hint">
               {showChoices ? "Pick one!" : resultText ? "Nice work, Commander." : "What a view!"}
             </span>
+            {content.goto && !resultText && (
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => onGoto(content.goto)}
+              >
+                {content.goto.label ?? "Show me"}
+              </button>
+            )}
             <button type="button" className="ghost-button" onClick={onClose}>
               {resultText ? "Yay!" : "Okay!"}
             </button>

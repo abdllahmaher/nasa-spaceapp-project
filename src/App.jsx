@@ -25,9 +25,11 @@ export default function App() {
   const [active, setActive] = useState(null);
   const [report, setReport] = useState(() => SAVED_MISSION?.lastReport ?? null);
   const [cinematic, setCinematic] = useState(null);
+  const [walkTo, setWalkTo] = useState(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
   const taskToken = useRef(0);
+  const walkToken = useRef(0);
   const pendingBubble = useRef(null);
 
   const day = getDay(state.day);
@@ -36,9 +38,23 @@ export default function App() {
     done: objective.check(state),
     progress: objective.progress?.(state) ?? 0,
     progressMax: objective.progressMax ?? 0,
+    // First place the child still has to visit for this task.
+    nextTarget: (objective.targets ?? []).find(
+      (target) => !objective.targetOpen || objective.targetOpen(target, state),
+    ),
   }));
   const canEndDay = objectives.every((objective) => objective.done);
   const status = buildStatus(state);
+
+  // Which places still need a visit? Drawn as bouncing pins in the world.
+  const markers = {};
+  for (const objective of objectives) {
+    if (objective.done) continue;
+    for (const target of objective.targets ?? []) {
+      if (objective.targetOpen && !objective.targetOpen(target, state)) continue;
+      markers[target] = true;
+    }
+  }
 
   const paused = !["intro", "playing", "cinematic"].includes(phase);
   const inputEnabled = phase === "playing";
@@ -129,6 +145,23 @@ export default function App() {
     setPhase("playing");
   };
 
+  /** Walk Layla to a place from the quest list, the world, or a bubble. */
+  const handleTrack = (targetId) => {
+    if (!targetId) return;
+    if (phase !== "playing") return;
+    walkToken.current += 1;
+    setWalkTo({ token: walkToken.current, targetId });
+  };
+
+  /** "Show me" inside an officer report: close the bubble and walk over. */
+  const handleGoto = (goto) => {
+    if (!goto?.targetId) return;
+    setActive(null);
+    setPhase("playing");
+    walkToken.current += 1;
+    setWalkTo({ token: walkToken.current, targetId: goto.targetId });
+  };
+
   const handleEndDay = () => {
     if (!canEndDay) return;
     const { state: next, report: nextReport } = endDay(state);
@@ -183,7 +216,9 @@ export default function App() {
           inputEnabled={inputEnabled}
           startLanded={Boolean(SAVED_MISSION)}
           status={status}
+          markers={markers}
           cinematic={cinematic}
+          walkTo={walkTo}
           onInteract={handleInteract}
           onIntroComplete={handleIntroComplete}
           onCinematicDone={handleCinematicDone}
@@ -196,6 +231,7 @@ export default function App() {
             objectives={objectives}
             resources={state.resources}
             onEndDay={handleEndDay}
+            onTrack={handleTrack}
             canEndDay={canEndDay}
           />
         )}
@@ -216,6 +252,7 @@ export default function App() {
             content={active}
             resources={state.resources}
             onChoose={handleChoose}
+            onGoto={handleGoto}
             onClose={handleCloseInteraction}
           />
         )}
@@ -232,7 +269,7 @@ export default function App() {
       <footer className="app-footer">
         <span>
           <kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump ·{" "}
-          <kbd>E</kbd> talk / check
+          <kbd>E</kbd> talk / check · <kbd>Click</kbd> walk there
         </span>
         <span>Real space-weather data: NASA DONKI.</span>
       </footer>

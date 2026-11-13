@@ -1,5 +1,6 @@
 import { createCrewBehavior } from "./crew";
 import { createRocketBehavior } from "./rocket";
+import { createStationBehavior } from "./station";
 
 /**
  * Behaviors give an entity a little state machine (arrival animations,
@@ -20,6 +21,8 @@ export function createBehavior(def) {
       return createRocketBehavior(def.sprite.clips, def.behavior.config);
     case "crew":
       return createCrewBehavior(def.sprite.clips, def.behavior.config);
+    case "station":
+      return createStationBehavior(def.behavior.config);
     default:
       console.warn(`Unknown entity behavior: ${def.behavior.type}`);
       return null;

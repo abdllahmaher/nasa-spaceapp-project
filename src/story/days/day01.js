@@ -16,18 +16,24 @@ export const DAY01 = {
       id: "inspect_power",
       icon: "bolt",
       label: "Check the power",
+      targets: ["power_junction"],
+      targetOpen: (target, state) => !state.seen.includes(target),
       check: (state) => state.seen.includes("power_junction"),
     },
     {
       id: "inspect_life_support",
       icon: "drop",
       label: "Check the air",
+      targets: ["life_support"],
+      targetOpen: (target, state) => !state.seen.includes(target),
       check: (state) => state.seen.includes("life_support"),
     },
     {
       id: "meet_crew",
       icon: "crew",
       label: "Meet the crew",
+      targets: ["kai", "nova", "rex"],
+      targetOpen: (target, state) => !state.seen.includes(target),
       check: (state) => ["kai", "nova", "rex"].every((id) => state.seen.includes(id)),
       progress: (state) =>
         ["kai", "nova", "rex"].filter((id) => state.seen.includes(id)).length,
@@ -37,6 +43,8 @@ export const DAY01 = {
       id: "power_decision",
       icon: "wrench",
       label: "Pick a power plan",
+      targets: ["power_junction"],
+      targetOpen: (target, state) => !state.decisions[target],
       check: (state) => Boolean(state.decisions.power_junction),
     },
   ],
@@ -123,6 +131,13 @@ export const DAY01 = {
       eyebrow: "ENGINEER",
       title: "Kai",
       body: ["That power box is sparking!", "I can fix it tonight. Or we can take a closer look first."],
+      report: {
+        label: "Power box",
+        icon: "bolt",
+        resource: "powerCondition",
+        hint: "Sparking — needs a look.",
+      },
+      goto: { targetId: "power_junction", label: "Show me" },
     },
 
     nova: {
@@ -130,6 +145,13 @@ export const DAY01 = {
       eyebrow: "AIR & WATER",
       title: "Nova",
       body: ["I keep the air and water clean.", "The filter needs help soon. Not today, though!"],
+      report: {
+        label: "Air machine",
+        icon: "drop",
+        resource: "lifeSupportCondition",
+        hint: "Air is good. Filter is clogging.",
+      },
+      goto: { targetId: "life_support", label: "Show me" },
     },
 
     rex: {
@@ -137,6 +159,13 @@ export const DAY01 = {
       eyebrow: "SCIENCE",
       title: "Rex",
       body: ["That crater is full of secrets!", "Can I explore it tomorrow? Please?"],
+      report: {
+        label: "Home dome",
+        icon: "home",
+        resource: "habitatSafety",
+        hint: "Warm and safe inside.",
+      },
+      goto: { targetId: "habitat", label: "Show me" },
     },
 
     habitat: {

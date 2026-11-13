@@ -7,7 +7,12 @@ import { findInteractable } from "./interaction";
 import { WORLD } from "./world";
 import { SCENE } from "../data/world/scene";
 import { collectSources, loadImage, loadImages } from "./engine/assets";
-import { prepareEntities, visibleEntities } from "./engine/entities";
+import {
+  isEntityInteractive,
+  nearestWorldX,
+  prepareEntities,
+  visibleEntities,
+} from "./engine/entities";
 import {
   buildPanorama,
   drawDebugOverlay,
@@ -15,16 +20,22 @@ import {
   drawEntityBar,
   drawPanorama,
   drawPrompt,
+  drawQuestMarker,
+  entityTop,
 } from "./engine/render";
 
 const CREW_IDS = ["kai", "nova", "rex"];
+// How long each specialist needs to bolt their station together.
+const BUILD_SECONDS = 2.0;
 
 export default function GameCanvas({
   paused = false,
   inputEnabled = true,
   startLanded = false,
   status = {},
+  markers = {},
   cinematic = null,
+  walkTo = null,
   onInteract,
   onIntroComplete,
   onCinematicDone,
@@ -35,7 +46,9 @@ export default function GameCanvas({
   const pausedRef = useRef(paused);
   const inputEnabledRef = useRef(inputEnabled);
   const statusRef = useRef(status);
+  const markersRef = useRef(markers);
   const cinematicRef = useRef(cinematic);
+  const walkToRef = useRef(walkTo);
   const onInteractRef = useRef(onInteract);
   const onIntroCompleteRef = useRef(onIntroComplete);
   const onCinematicDoneRef = useRef(onCinematicDone);
@@ -45,11 +58,23 @@ export default function GameCanvas({
     pausedRef.current = paused;
     inputEnabledRef.current = inputEnabled;
     statusRef.current = status;
+    markersRef.current = markers;
     cinematicRef.current = cinematic;
+    walkToRef.current = walkTo;
     onInteractRef.current = onInteract;
     onIntroCompleteRef.current = onIntroComplete;
     onCinematicDoneRef.current = onCinematicDone;
-  }, [paused, inputEnabled, status, cinematic, onInteract, onIntroComplete, onCinematicDone]);
+  }, [
+    paused,
+    inputEnabled,
+    status,
+    markers,
+    cinematic,
+    walkTo,
+    onInteract,
+    onIntroComplete,
+    onCinematicDone,
+  ]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,11 +91,14 @@ export default function GameCanvas({
     const entities = prepareEntities(SCENE.entities);
     const rocket = entities.find((entity) => entity.id === "arrival-rocket");
     const crew = entities.filter((entity) => CREW_IDS.includes(entity.id));
+    const stationOf = (member) =>
+      entities.find((entity) => entity.id === member.stationId);
 
     let images = new Map();
     let panoramas = [];
     let spritesheet = null;
     let period = 1;
+    let clock = 0;
     let debug = false;
     let disposed = false;
     let introDone = startLandedRef.current;
@@ -79,10 +107,17 @@ export default function GameCanvas({
     let wasPaused = false;
     let task = null;
     let handledTask = 0;
+    let handledWalk = 0;
 
     if (startLandedRef.current) {
+      // Resuming: the outpost is already standing and the crew are at work.
       rocket?.behavior?.skip?.();
-      for (const member of crew) member.x = member.homeX ?? member.x;
+      for (const member of crew) {
+        member.behavior?.show?.();
+        member.x = member.homeX ?? member.x;
+        member.introPhase = "done";
+      }
+      for (const entity of entities) entity.behavior?.finish?.();
     }
 
     const ready = () => panoramas.length > 0 && spritesheet !== null;
@@ -105,7 +140,9 @@ export default function GameCanvas({
         if (entry.layer.sortY === null) drawPanorama(ctx, entry.panorama, cameraLeft);
       }
 
-      const copies = visibleEntities(entities, period, cameraLeft);
+      const copies = visibleEntities(entities, period, cameraLeft).filter(
+        (copy) => copy.entity.behavior?.isVisible?.() !== false,
+      );
       const drawables = [];
 
       for (const entry of panoramas) {
@@ -132,19 +169,41 @@ export default function GameCanvas({
         });
       }
 
-      drawables.push({
-        sortY: player.y,
-        draw: () => drawPlayer(ctx, player, cameraLeft, spritesheet),
-      });
+      // Layla stays in the lander until touchdown.
+      if (arrived) {
+        drawables.push({
+          sortY: player.y,
+          draw: () => drawPlayer(ctx, player, cameraLeft, spritesheet),
+        });
+      }
       drawables.sort((a, b) => a.sortY - b.sortY);
 
       for (const item of drawables) item.draw();
 
-      // Chunky pixel bars above machines and crew.
+      // Pixel bars + "go here" pins above machines and crew.
       for (const copy of copies) {
         const targetId = copy.entity.interactive?.targetId;
-        if (targetId && statusRef.current?.[targetId]) {
-          drawEntityBar(ctx, copy, statusRef.current[targetId], images);
+        if (!targetId) continue;
+
+        const build = copy.entity.behavior?.getProgress?.();
+        if (build !== undefined) {
+          // Nothing to show until the crew has started assembling it.
+          if (build <= 0) continue;
+          if (build < 1) {
+            drawEntityBar(
+              ctx,
+              copy,
+              { value: build * 100, tint: "#ffb066", icon: "wrench" },
+              images,
+            );
+            continue;
+          }
+        }
+
+        const statusEntry = statusRef.current?.[targetId];
+        if (statusEntry) drawEntityBar(ctx, copy, statusEntry, images);
+        if (introDone && markersRef.current?.[targetId]) {
+          drawQuestMarker(ctx, copy, images, clock);
         }
       }
 
@@ -166,7 +225,29 @@ export default function GameCanvas({
 
     const startArrival = () => {
       for (const [index, member] of crew.entries()) {
-        member.behavior?.walkTo?.(member.homeX ?? member.x, index * 0.2);
+        member.behavior?.show?.();
+        const station = stationOf(member);
+        // Stand just left of the build site, then bolt it together.
+        const standX = station ? station.x - 56 / period : member.homeX ?? member.x;
+        member.introPhase = "walk";
+        member.behavior?.walkTo?.(standX, index * 0.45);
+      }
+    };
+
+    const updateCrewBuilds = () => {
+      for (const member of crew) {
+        const station = stationOf(member);
+
+        if (member.introPhase === "walk" && !member.behavior?.isBusy?.()) {
+          member.introPhase = "build";
+          member.behavior?.work?.(BUILD_SECONDS, false);
+          station?.behavior?.build?.();
+        } else if (member.introPhase === "build" && !member.behavior?.isBusy?.()) {
+          member.introPhase = "home";
+          member.behavior?.walkTo?.(member.homeX ?? member.x);
+        } else if (member.introPhase === "home" && !member.behavior?.isBusy?.()) {
+          member.introPhase = "done";
+        }
       }
     };
 
@@ -176,7 +257,9 @@ export default function GameCanvas({
         startArrival();
       }
 
-      // Layla steps away from the lander while the crew heads to their posts.
+      if (!arrived) return;
+
+      // Layla steps away from the lander while the crew builds.
       const dx = WORLD.introExitX - player.x;
       if (Math.abs(dx) > 1) {
         const step = Math.min(Math.abs(dx), 110 * dt);
@@ -189,7 +272,9 @@ export default function GameCanvas({
         player.animTime = 0;
       }
 
-      if (arrived && crew.every((member) => !member.behavior?.isBusy?.())) {
+      updateCrewBuilds();
+
+      if (crew.every((member) => member.introPhase === "done")) {
         introWait += dt;
         if (introWait > 0.9) {
           introDone = true;
@@ -236,14 +321,89 @@ export default function GameCanvas({
         return;
       }
 
-      camera.update(
-        dt,
-        (actor.x + machine.x) * 0.5 * period,
-      );
+      camera.update(dt, (actor.x + machine.x) * 0.5 * period);
     };
+
+    // ---------------------------------------------------------------- mouse
+
+    const toWorld = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      const sx = ((event.clientX - rect.left) / rect.width) * WORLD.width;
+      const sy = ((event.clientY - rect.top) / rect.height) * WORLD.height;
+      return { sx, sy, worldX: camera.getLeft() + sx };
+    };
+
+    const hitTest = (event) => {
+      const point = toWorld(event);
+      if (!point) return null;
+
+      let best = null;
+      for (const entity of entities) {
+        if (!isEntityInteractive(entity)) continue;
+        if (entity.behavior?.isVisible?.() === false) continue;
+
+        const worldX = nearestWorldX(entity, period, point.worldX);
+        const top = entityTop(entity, images) ?? entity.y - 40;
+        // Generous target: sprite, status bar and quest pin all count.
+        if (point.sy < top - 60 || point.sy > entity.y + 14) continue;
+
+        const reach = Math.max(64, (entity.footR ?? 24) * 1.6);
+        const dx = Math.abs(worldX - point.worldX);
+        if (dx > reach) continue;
+        if (!best || dx < best.dx) best = { entity, worldX, dx };
+      }
+      return best;
+    };
+
+    const queueWalkTo = (entity, worldX) => {
+      if (!entity) {
+        player.auto = { x: worldX, faceX: worldX };
+        return;
+      }
+
+      const interaction = entity.interactive;
+      const offset = Math.max(48, Math.min(96, (entity.footR ?? 24) + 46));
+      const side = player.x <= worldX ? -1 : 1;
+
+      player.auto = {
+        x: worldX + side * offset,
+        faceX: worldX,
+        targetId: interaction?.targetId ?? null,
+        entityId: entity.id,
+        label: interaction?.label ?? null,
+      };
+    };
+
+    const onClick = (event) => {
+      if (!introDone || !inputEnabledRef.current || pausedRef.current) return;
+
+      const hit = hitTest(event);
+      if (hit) {
+        queueWalkTo(hit.entity, hit.worldX);
+        return;
+      }
+
+      const point = toWorld(event);
+      if (point) queueWalkTo(null, point.worldX);
+    };
+
+    const onMove = (event) => {
+      if (!introDone || !inputEnabledRef.current || pausedRef.current) {
+        canvas.style.cursor = "default";
+        return;
+      }
+      canvas.style.cursor = hitTest(event) ? "pointer" : "default";
+    };
+
+    canvas.addEventListener("click", onClick);
+    canvas.addEventListener("mousemove", onMove);
+
+    // ---------------------------------------------------------------- loop
 
     const update = (dt) => {
       const pausedNow = pausedRef.current;
+      clock += dt;
 
       if (pausedNow) {
         if (!wasPaused) input.clear();
@@ -262,6 +422,18 @@ export default function GameCanvas({
 
         updateTask(dt);
         const focused = Boolean(task);
+
+        // HUD shortcuts (quest rows) ask Layla to walk somewhere.
+        if (walkToRef.current && walkToRef.current.token !== handledWalk) {
+          const next = walkToRef.current;
+          handledWalk = next.token;
+          const target = entities.find(
+            (entity) =>
+              entity.interactive?.targetId === next.targetId &&
+              isEntityInteractive(entity),
+          );
+          if (target) queueWalkTo(target, nearestWorldX(target, period, player.x));
+        }
 
         if (inputEnabledRef.current) {
           updatePlayer(player, dt, input, entities, period);
@@ -302,6 +474,8 @@ export default function GameCanvas({
       disposed = true;
       loop.stop();
       input.destroy();
+      canvas.removeEventListener("click", onClick);
+      canvas.removeEventListener("mousemove", onMove);
     };
   }, []);
 
@@ -310,7 +484,7 @@ export default function GameCanvas({
       <canvas
         ref={canvasRef}
         className="game-canvas"
-        aria-label="Mars surface. Move with WASD or arrows, Space to jump, E to inspect or talk, F2 for debug."
+        aria-label="Mars surface. Move with WASD or arrows, Space to jump, E to inspect, or click a marked spot to walk there. F2 for debug."
       />
       <span className="game-badge">Layla · Commander · Surface EVA</span>
     </div>

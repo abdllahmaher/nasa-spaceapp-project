@@ -15,10 +15,21 @@ export function createCrewBehavior(clips, config = {}) {
   let workLeft = 0;
   let flip = false;
   let entity = null;
+  // Crew ride down inside the lander, so they start hidden.
+  let hidden = config.hidden ?? false;
 
   return {
     attach(nextEntity) {
       entity = nextEntity;
+    },
+
+    /** Step out of the lander. */
+    show() {
+      hidden = false;
+    },
+
+    isVisible() {
+      return !hidden;
     },
 
     update(dt, period = 1) {
@@ -72,6 +83,7 @@ export function createCrewBehavior(clips, config = {}) {
     },
 
     getView() {
+      if (hidden) return { hidden: true };
       const active = clips[clip] ?? clips.idle;
       if (!active) return null;
       const fps = CLIP_FPS[clip] ?? 6;

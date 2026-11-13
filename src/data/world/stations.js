@@ -18,6 +18,7 @@ export const OUTPOST_STATIONS = [
     blocking: false,
     footR: 30,
     shadow: true,
+    behavior: { type: "station", config: { seconds: 2.0 } },
     interactive: {
       kind: "inspect",
       targetId: "power_junction",
@@ -35,6 +36,7 @@ export const OUTPOST_STATIONS = [
     blocking: false,
     footR: 30,
     shadow: true,
+    behavior: { type: "station", config: { seconds: 2.0 } },
     interactive: {
       kind: "inspect",
       targetId: "life_support",
@@ -52,6 +54,7 @@ export const OUTPOST_STATIONS = [
     blocking: false,
     footR: 58,
     shadow: true,
+    behavior: { type: "station", config: { seconds: 2.0 } },
     interactive: {
       kind: "inspect",
       targetId: "habitat",

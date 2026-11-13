@@ -83,6 +83,8 @@ export function entityTop(entity, images) {
 export function drawEntity(ctx, copy, images) {
   const { entity, screenX, flip } = copy;
   const view = entity.behavior?.getView?.();
+  if (view?.hidden) return;
+
   const src = view?.src ?? entity.sprite?.src;
   const image = images.get(src);
   if (!image) return;
@@ -93,6 +95,8 @@ export function drawEntity(ctx, copy, images) {
   const anchor = view?.anchor ?? entity.anchor ?? 1;
   const top = entity.y + (view?.offsetY ?? 0) - h * anchor;
   const shadowK = Math.max(0, view?.shadowK ?? 1);
+  // Unbuilt stations rise out of the ground: reveal a growing bottom slice.
+  const reveal = Math.max(0, Math.min(1, view?.reveal ?? 1));
 
   if (entity.shadow) {
     const radius = entity.footR ?? Math.max(10, w * 0.3);
@@ -116,6 +120,12 @@ export function drawEntity(ctx, copy, images) {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
+  if (reveal < 0.999) {
+    ctx.beginPath();
+    ctx.rect(screenX - w, entity.y - h * reveal - 2, w * 2, h * reveal + 3);
+    ctx.clip();
+  }
+
   if (facingLeft) {
     ctx.translate(screenX, top);
     ctx.scale(-1, 1);
@@ -125,6 +135,27 @@ export function drawEntity(ctx, copy, images) {
   }
 
   ctx.restore();
+
+  // Construction dust while the station is still climbing out of the sand.
+  if (view?.building) {
+    const rise = entity.y - h * reveal;
+    ctx.save();
+    ctx.fillStyle = "rgba(232, 176, 148, 0.55)";
+    for (let i = 0; i < 3; i += 1) {
+      const drift = ((reveal * 40 + i * 11) % 22) - 11;
+      const size = 2 + (i % 2);
+      ctx.fillRect(
+        Math.round(screenX + drift - size / 2),
+        Math.round(entity.y - 2 - (i % 2) * 3),
+        size,
+        size,
+      );
+    }
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#ffe1c4";
+    ctx.fillRect(Math.round(screenX - w / 2), Math.round(rise), Math.round(w), 2);
+    ctx.restore();
+  }
 }
 
 // Small "E" bubble over the entity Layla can fix or inspect.
@@ -238,6 +269,51 @@ export function drawEntityBar(ctx, copy, status, images) {
       i < filled ? status.tint : "rgba(255, 232, 214, 0.16)";
     ctx.fillRect(barX + i * (segW + gap), barY, segW, 5);
   }
+
+  ctx.restore();
+}
+
+/**
+ * Bouncing gold pin over an unfinished task. Kids can read it from across
+ * the outpost, and clicking it walks Layla over.
+ */
+export function drawQuestMarker(ctx, copy, images, time) {
+  const { entity, screenX } = copy;
+  const top = entityTop(entity, images);
+  if (top === null) return;
+
+  const bob = Math.sin(time * 3.6) * 2.5;
+  const x = Math.round(screenX);
+  const y = Math.round(top - 52 + bob);
+
+  ctx.save();
+
+  // Soft halo so the pin pops against the red dust.
+  ctx.fillStyle = "rgba(255, 209, 102, 0.16)";
+  ctx.beginPath();
+  ctx.arc(x, y + 1, 12, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pin body + pointer.
+  ctx.fillStyle = "#ffd166";
+  ctx.strokeStyle = "rgba(46, 24, 10, 0.85)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.roundRect(x - 9, y - 10, 18, 18, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(x - 5, y + 7);
+  ctx.lineTo(x + 5, y + 7);
+  ctx.lineTo(x, y + 13);
+  ctx.closePath();
+  ctx.fill();
+
+  // Exclamation mark.
+  ctx.fillStyle = "#3a2410";
+  ctx.fillRect(x - 1.5, y - 6, 3, 7);
+  ctx.fillRect(x - 1.5, y + 3, 3, 3);
 
   ctx.restore();
 }

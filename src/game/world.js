@@ -10,7 +10,7 @@ export const WORLD = {
   playerSpeed: 190,
   runMultiplier: 1.8,
   // Where Layla starts on the endless surface.
-  startX: 1480,
+  startX: 1440,
   startY: 492,
   // Intro staging: the camera holds on the outpost while the crew exits.
   introFocusX: 1650,

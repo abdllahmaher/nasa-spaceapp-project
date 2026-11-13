@@ -9,7 +9,7 @@ function buildFrames(sheet, prefix, count) {
   return Array.from({ length: count }, (_, i) => sheet.frames[`${prefix}_${i}`].frame);
 }
 
-function crewEntity({ id, name, x, homeX, src, sheet }) {
+function crewEntity({ id, name, x, homeX, stationId, src, sheet }) {
   return {
     id,
     sprite: {
@@ -21,6 +21,7 @@ function crewEntity({ id, name, x, homeX, src, sheet }) {
     },
     x,
     homeX,
+    stationId,
     y: 492,
     scale: 0.72,
     repeat: false,
@@ -35,37 +36,41 @@ function crewEntity({ id, name, x, homeX, src, sheet }) {
     },
     behavior: {
       type: "crew",
-      config: { speed: 175 },
+      // Crew ride down inside the lander, then step out to build.
+      config: { speed: 200, hidden: true },
     },
   };
 }
 
 /**
- * The three specialists. They start beside the lander and walk to their
- * posts after touchdown, which makes the arrival feel like a crew exit.
+ * The three specialists wait inside the lander with the outpost parts. After
+ * touchdown they step out and each one assembles their own station.
  */
 export const CREW_ENTITIES = [
   crewEntity({
     id: "kai",
     name: "Kai",
-    x: 0.252,
+    x: 0.2445,
     homeX: 0.28,
+    stationId: "power-junction",
     src: kaiUrl,
     sheet: kaiSheet,
   }),
   crewEntity({
     id: "nova",
     name: "Nova",
-    x: 0.254,
+    x: 0.2455,
     homeX: 0.316,
+    stationId: "life-support",
     src: novaUrl,
     sheet: novaSheet,
   }),
   crewEntity({
     id: "rex",
     name: "Rex",
-    x: 0.256,
+    x: 0.2465,
     homeX: 0.352,
+    stationId: "habitat-dome",
     src: rexUrl,
     sheet: rexSheet,
   }),

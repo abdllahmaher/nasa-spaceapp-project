@@ -32,6 +32,7 @@ export default function HUD({
   objectives,
   resources,
   onEndDay,
+  onTrack,
   canEndDay,
 }) {
   return (
@@ -41,26 +42,37 @@ export default function HUD({
           SOL {day} · {location}
         </p>
         <ul className="quest-list">
-          {objectives.map((objective) => (
-            <li
-              key={objective.id}
-              className={`quest ${objective.done ? "is-done" : ""}`}
-            >
-              <span className="quest-icon">
-                <PixelIcon name={objective.icon} size={11} />
-              </span>
-              <span className="quest-label">{objective.label}</span>
-              {objective.progressMax > 0 ? (
-                <span className="quest-pips" aria-label={`${objective.progress} of ${objective.progressMax}`}>
-                  {Array.from({ length: objective.progressMax }, (_, i) => (
-                    <span key={i} className={i < objective.progress ? "is-filled" : ""} />
-                  ))}
-                </span>
-              ) : (
-                <span className="quest-check">{objective.done ? "★" : ""}</span>
-              )}
-            </li>
-          ))}
+          {objectives.map((objective) => {
+            const target = objective.nextTarget;
+            return (
+              <li key={objective.id}>
+                <button
+                  type="button"
+                  className={`quest ${objective.done ? "is-done" : ""}`}
+                  onClick={() => onTrack?.(target)}
+                  disabled={objective.done || !target}
+                  title={target ? "Walk here" : undefined}
+                >
+                  <span className="quest-icon">
+                    <PixelIcon name={objective.icon} size={11} />
+                  </span>
+                  <span className="quest-label">{objective.label}</span>
+                  {objective.progressMax > 0 ? (
+                    <span
+                      className="quest-pips"
+                      aria-label={`${objective.progress} of ${objective.progressMax}`}
+                    >
+                      {Array.from({ length: objective.progressMax }, (_, i) => (
+                        <span key={i} className={i < objective.progress ? "is-filled" : ""} />
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="quest-check">{objective.done ? "★" : ""}</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </section>
 
