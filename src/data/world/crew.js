@@ -43,13 +43,17 @@ function crewEntity({ id, name, x, homeX, src, sheet }) {
 /**
  * The three specialists. They start beside the lander and walk to their
  * posts after touchdown, which makes the arrival feel like a crew exit.
+ *
+ * `homeX` is where a crew member waits between jobs. The posts are spread
+ * out so every crew member stands in the clear gap between two stations
+ * instead of on top of one.
  */
 export const CREW_ENTITIES = [
   crewEntity({
     id: "kai",
     name: "Kai",
     x: 0.252,
-    homeX: 0.28,
+    homeX: 0.269,
     src: kaiUrl,
     sheet: kaiSheet,
   }),
@@ -57,7 +61,7 @@ export const CREW_ENTITIES = [
     id: "nova",
     name: "Nova",
     x: 0.254,
-    homeX: 0.316,
+    homeX: 0.326,
     src: novaUrl,
     sheet: novaSheet,
   }),
@@ -65,7 +69,7 @@ export const CREW_ENTITIES = [
     id: "rex",
     name: "Rex",
     x: 0.256,
-    homeX: 0.352,
+    homeX: 0.3828,
     src: rexUrl,
     sheet: rexSheet,
   }),

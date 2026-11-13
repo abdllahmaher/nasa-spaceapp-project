@@ -15,7 +15,7 @@ export default function DayBreak({ report, onReplay }) {
     <div className="vn-layer" role="dialog" aria-modal="true" aria-labelledby="daybreak-title">
       <div className="vn-stage">
         <div className="vn-portrait-wrap">
-          <Portrait id="nova" size={142} />
+          <Portrait id="nova" size={190} />
         </div>
 
         <article className="vn-panel">

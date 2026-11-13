@@ -56,4 +56,15 @@ export const ROCKS = [
     blocking: true,
     footR: 85,
   },
+  {
+    id: "rock-right-moundd",
+    sprite: { src: SOURCE, bleed: 2, frame: { x: 1917, y: 620, w: 400, h: 235 } },
+    x: 0.2011,
+    y: 471,
+    scale: SCALE,
+    perspective: false,
+    mirror: true,
+    blocking: true,
+    footR: 85,
+  },
 ];
