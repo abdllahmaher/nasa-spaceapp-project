@@ -417,9 +417,12 @@ export default function GameCanvas({
         if (!introDone) {
           updateIntro(dt);
           // The camera pans with the crew as they head out to their posts, so
-          // nobody walks off the edge of the screen during the arrival.
+          // nobody walks off the edge of the screen during the arrival. It
+          // tracks the furthest one along rather than the average, so the
+          // station being built stays in frame instead of sitting off the
+          // right-hand edge.
           const crewFocus = crew.length
-            ? crew.reduce((sum, member) => sum + member.x * period, 0) / crew.length
+            ? Math.max(...crew.map((member) => member.x * period))
             : WORLD.introFocusX;
           camera.update(dt, Math.max(crewFocus, (rocket?.x ?? 0) * period));
           draw();

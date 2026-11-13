@@ -17,7 +17,7 @@ export const OUTPOST_STATIONS = [
     // and an inverter cabinet, instead of a single lonely panel.
     sprite: { src: solarArrayUrl },
     x: 0.2995,
-    y: 484,
+    y: 464,
     scale: 1,
     repeat: false,
     mirror: false,
