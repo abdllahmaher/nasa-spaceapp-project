@@ -1,4 +1,4 @@
-import solarPanelUrl from "../../assets/props/solar_panel.png";
+import solarPanelUrl from "../../assets/props/solar_panels.png";
 import oxygenStationUrl from "../../assets/props/oxygen_station.png";
 import habitatDomeUrl from "../../assets/props/habitat_dome.png";
 
