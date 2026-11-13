@@ -1,10 +1,10 @@
-import { DONKI_ADVISORY, JEZERO_SITE, NASA_SOURCES } from "../../data/nasa/sources";
+import { DONKI_ADVISORY, JEZERO_SITE } from "../../data/nasa/sources";
 
 /**
- * Sol 1: arrival, power, life support, and the three specialists.
+ * Sol 1: touchdown, the crew exit, three quick checks, and the power call.
  *
- * Interaction content is keyed by the entity's `interactive.targetId`, so the
- * canvas never imports story text.
+ * Everything here is written for 7–12 year olds: one idea per line, short
+ * labels, and a speaker attached to every bubble so the UI can show a face.
  */
 export const DAY01 = {
   day: 1,
@@ -14,142 +14,136 @@ export const DAY01 = {
   objectives: [
     {
       id: "inspect_power",
-      label: "Inspect the power junction",
+      icon: "bolt",
+      label: "Check the power",
       check: (state) => state.seen.includes("power_junction"),
     },
     {
       id: "inspect_life_support",
-      label: "Check the life-support plant",
+      icon: "drop",
+      label: "Check the air",
       check: (state) => state.seen.includes("life_support"),
     },
     {
       id: "meet_crew",
-      label: "Talk to Kai, Nova and Rex",
+      icon: "crew",
+      label: "Meet the crew",
       check: (state) => ["kai", "nova", "rex"].every((id) => state.seen.includes(id)),
-      progress: (state) => `${["kai", "nova", "rex"].filter((id) => state.seen.includes(id)).length}/3`,
+      progress: (state) =>
+        ["kai", "nova", "rex"].filter((id) => state.seen.includes(id)).length,
+      progressMax: 3,
     },
     {
       id: "power_decision",
-      label: "Decide how to handle the power fault",
+      icon: "wrench",
+      label: "Pick a power plan",
       check: (state) => Boolean(state.decisions.power_junction),
     },
   ],
 
   briefing: {
-    kicker: "SOL 1 · MARS SURFACE",
-    title: "Touchdown at Jezero",
-    body: [
-      "Your crew is down. The outpost is on backup power, and the secondary bus is unstable.",
-      "Before sunset: inspect the power junction, check life support, and meet your three specialists. Then decide whether to repair the fault tonight.",
+    kicker: "SOL 1 · JEZERO",
+    title: "We made it!",
+    speaker: "layla",
+    lines: [
+      "Touchdown! Everyone okay?",
+      "Before dark: check the power, check the air, and say hi to Kai, Nova and Rex.",
     ],
+    hint: "Then choose what to do about the buzzing power box.",
+    startLabel: "Let's go!",
     site: JEZERO_SITE,
-    weather: DONKI_ADVISORY,
-    source: NASA_SOURCES.donki,
-    startLabel: "Begin EVA",
+    weather: {
+      headline: "A small solar breeze",
+      level: "mild",
+      line: "A puff of solar wind is passing Mars today. No big storm.",
+      issuedAt: DONKI_ADVISORY.issuedAt,
+      source: "NASA DONKI · real data",
+    },
   },
 
   interactions: {
     rocket: {
-      eyebrow: "MISSION LOG · ARRIVAL",
+      speaker: "layla",
+      eyebrow: "OUR RIDE HOME",
       title: "Ares Lander",
-      body: [
-        "Touchdown confirmed at the Jezero delta. Hull intact. Cargo secure.",
-        "The lander stays on the pad as your return ticket. For now, the outpost is home.",
-      ],
-      source: JEZERO_SITE.note,
+      body: ["Our ride home! It stays right here on the pad."],
     },
 
     power_junction: {
-      eyebrow: "SYSTEM · POWER BUS",
-      title: "Power Junction",
-      body: [
-        "Secondary bus at 62%. Storage is nominal, but the connector is arcing under the dust cover.",
-        "Kai can patch it before sunset. It will cost parts and time.",
-      ],
-      note: "System status is a game value, not a NASA measurement.",
+      speaker: "kai",
+      eyebrow: "POWER BOX",
+      title: "Power Box",
+      body: ["The power box is buzzing and sparking.", "I can fix it, but I need two spare parts."],
       choices: [
         {
           id: "repair",
-          label: "Repair now",
-          detail: "Kai patches the bus before sunset.",
+          icon: "wrench",
+          label: "Fix it now",
+          detail: "Kai fixes the box tonight.",
           cost: { spareParts: 2, storedPower: 4 },
           effects: { powerCondition: 15, habitatSafety: 2 },
           fatigue: { kai: 6 },
           setFlags: ["powerUnitRepaired"],
-          result:
-            "Kai seals the connector and reroutes the bus. Power condition rises to 77%. Two spare parts are gone, and Kai is tired but satisfied.",
-          toast: "Power bus repaired",
+          scene: { crewId: "kai", targetId: "power_junction", work: 1.9 },
+          result: "Kai fixed it! The lights shine bright.",
+          toast: "Power fixed!",
         },
         {
           id: "diagnose",
-          label: "Diagnose first",
-          detail: "Spend a little power to isolate the fault. Repair tomorrow.",
+          icon: "search",
+          label: "Check it first",
+          detail: "Kai looks for the loose wire.",
           cost: { storedPower: 1 },
           setFlags: ["powerDiagnosed"],
-          result:
-            "Kai isolates the fault and logs a repair plan. The bus stays on backup power overnight, but tomorrow's repair will be cheaper.",
-          toast: "Power fault diagnosed",
+          scene: { crewId: "kai", targetId: "power_junction", work: 1.1 },
+          result: "Kai found a loose wire. Easy fix tomorrow!",
+          toast: "Found the loose wire!",
         },
         {
           id: "postpone",
-          label: "Postpone",
-          detail: "Save the parts. The bus may degrade overnight.",
+          icon: "moon",
+          label: "Leave it for now",
+          detail: "Save the parts. Get some sleep.",
           setFlags: ["powerUnitPostponed"],
-          result:
-            "You leave the bus on backup power. The crew gets an early night, but the fault is still there.",
-          toast: "Power repair postponed",
+          result: "The power box still buzzes… Brr.",
+          toast: "Sleepy time… but buzz.",
         },
       ],
     },
 
     life_support: {
-      eyebrow: "SYSTEM · LIFE SUPPORT",
-      title: "Water Recycler",
-      body: [
-        "Water loop at 88%. Oxygen steady. The filter is due in two days.",
-        "Nova wants to stay ahead of it. The greenhouse will make the water budget tighter.",
-      ],
-      note: "Next: CSA food-production guidance for Sol 2.",
-      source: "Game status; Sol 2 reference: Canadian Space Agency food-production toolkit.",
+      speaker: "nova",
+      eyebrow: "AIR AND WATER",
+      title: "Fresh air!",
+      body: ["Air is clean. Good job, air machine!", "But the water filter is getting clogged."],
     },
 
     kai: {
-      eyebrow: "CREW · MISSION ENGINEER",
+      speaker: "kai",
+      eyebrow: "ENGINEER",
       title: "Kai",
-      body: [
-        "I can patch the bus before sunset. Two spares, one hour, and I'll be late for dinner.",
-        "If you want to save the parts, I can diagnose it instead. Your call, Commander.",
-      ],
-      quote: "I don't mind tired. I mind leaving a fault in the dark.",
+      body: ["That power box is sparking!", "I can fix it tonight. Or we can take a closer look first."],
     },
 
     nova: {
-      eyebrow: "CREW · LIFE SUPPORT",
+      speaker: "nova",
+      eyebrow: "AIR & WATER",
       title: "Nova",
-      body: [
-        "Water's fine today. The filter won't be fine on Sol 3.",
-        "If we push the greenhouse, we'll need both. I'd rather fix the filter before it fixes us.",
-      ],
-      quote: "Every system talks. You just have to listen before it shouts.",
+      body: ["I keep the air and water clean.", "The filter needs help soon. Not today, though!"],
     },
 
     rex: {
-      eyebrow: "CREW · SCIENCE OFFICER",
+      speaker: "rex",
+      eyebrow: "SCIENCE",
       title: "Rex",
-      body: [
-        "Jezero's delta is right there. Give me a rover window and I'll bring back samples worth the trip.",
-        "We came here to learn something. Let's not forget that while we chase spare parts.",
-      ],
-      quote: "The safest mission is the one that never leaves the pad. It's also the least useful.",
+      body: ["That crater is full of secrets!", "Can I explore it tomorrow? Please?"],
     },
 
     habitat: {
-      eyebrow: "OUTPOST · HABITAT",
+      speaker: "nova",
+      eyebrow: "HOME",
       title: "Habitat Dome",
-      body: [
-        "Pressurized. Warm. The only place on Mars with a coffee machine.",
-        "Three crew racks, one galley, and a wall of checklists. Home, for the next five sols.",
-      ],
+      body: ["Home sweet dome!", "Warm, cozy, and the only coffee on Mars."],
     },
   },
 };

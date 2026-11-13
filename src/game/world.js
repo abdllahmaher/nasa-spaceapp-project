@@ -10,8 +10,11 @@ export const WORLD = {
   playerSpeed: 190,
   runMultiplier: 1.8,
   // Where Layla starts on the endless surface.
-  startX: 1000,
+  startX: 1480,
   startY: 492,
+  // Intro staging: the camera holds on the outpost while the crew exits.
+  introFocusX: 1650,
+  introExitX: 1340,
   // Sprite size on screen: kept small so the landscape feels vast.
   playerScale: 0.7,
   // How quickly the camera catches up to the player (higher = snappier).
@@ -23,7 +26,7 @@ export const WORLD = {
   jumpSpeed: 330,
   gravity: 1150,
   // How close Layla has to be to a prop to fix/interact with it.
-  interactRange: { x: 90, y: 50 },
+  interactRange: { x: 100, y: 56 },
 };
 
 // Perspective: characters shrink slightly as they move toward the horizon.

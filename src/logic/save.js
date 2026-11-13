@@ -1,4 +1,4 @@
-const SAVE_KEY = "mars-outpost-mission-v1";
+const SAVE_KEY = "mars-outpost-mission-v2";
 
 export function saveGame(state) {
   try {

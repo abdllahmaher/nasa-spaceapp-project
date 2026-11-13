@@ -1,47 +1,47 @@
-import { RESOURCES, applyDelta, formatResource } from "./resources";
+import { applyDelta } from "./resources";
 
 function addFlag(state, flag) {
   if (!state.flags.includes(flag)) state.flags.push(flag);
 }
 
+/** Overnight consequences, written as short kid-readable outcomes. */
+const POWER_NOTES = {
+  repair: "Kai's fix held all night. Nice work!",
+  diagnose: "Kai found the loose wire. Tomorrow it's an easy fix.",
+  postpone: "The power box buzzed all night… Brr.",
+};
+
 /**
- * Resolves Sol 1 and produces the report shown before Sol 2.
- * All values are game values; the source notes are added by the story layer.
+ * Resolves Sol 1 and produces the visual recap shown before Sol 2.
+ * Values stay numeric so the UI can draw bars instead of percentages.
  */
 export function endDay(state) {
   const before = { ...state.resources };
-  const beforeCrew = {
-    kai: state.crew.kai.fatigue,
-    nova: state.crew.nova.fatigue,
-    rex: state.crew.rex.fatigue,
-  };
   const next = structuredClone(state);
-  const notes = [];
-  const apply = (key, delta, note) => {
-    next.resources[key] = applyDelta(next.resources, key, delta);
-    if (note) notes.push(note);
-  };
 
-  // Baseline overnight life-support load.
-  apply("storedPower", -4, "Overnight baseline load: −4 power.");
-  apply("water", -3, "Crew consumption: −3 water.");
-  apply("food", -2, "Crew meals: −2 food.");
-  apply("lifeSupportCondition", -1, "Filter wear: −1 life support.");
+  next.resources.storedPower = applyDelta(next.resources, "storedPower", -4);
+  next.resources.water = applyDelta(next.resources, "water", -3);
+  next.resources.food = applyDelta(next.resources, "food", -2);
+  next.resources.lifeSupportCondition = applyDelta(
+    next.resources,
+    "lifeSupportCondition",
+    -1,
+  );
 
   const powerChoice = next.decisions.power_junction;
 
   if (powerChoice === "repair") {
-    apply("habitatSafety", 1, "Stable power bus: +1 habitat safety.");
+    next.resources.habitatSafety = applyDelta(next.resources, "habitatSafety", 1);
     addFlag(next, "powerBusStable");
   } else if (powerChoice === "postpone") {
-    apply("powerCondition", -8, "Postponed fault: −8 power bus.");
-    apply("habitatSafety", -3, "Backup load: −3 habitat safety.");
+    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -8);
+    next.resources.habitatSafety = applyDelta(next.resources, "habitatSafety", -3);
     addFlag(next, "powerRisk");
   } else if (powerChoice === "diagnose") {
-    apply("powerCondition", -3, "Fault remains isolated: −3 power bus.");
+    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -3);
     addFlag(next, "repairPlanned");
   } else {
-    apply("powerCondition", -6, "Unresolved fault: −6 power bus.");
+    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -6);
     addFlag(next, "powerRisk");
   }
 
@@ -49,52 +49,37 @@ export function endDay(state) {
     member.fatigue = Math.min(100, member.fatigue + 4);
   }
 
-  const flagsBefore = new Set(state.flags);
-  const flagsAdded = next.flags.filter((flag) => !flagsBefore.has(flag));
-
   next.day = state.day + 1;
   next.completedEvents = [...next.completedEvents, "day01"];
 
-  const changes = RESOURCES.filter(
-    (resource) => before[resource.key] !== next.resources[resource.key],
-  ).map((resource) => ({
-    key: resource.key,
-    label: resource.label,
-    before: formatResource(resource.key, before[resource.key]),
-    after: formatResource(resource.key, next.resources[resource.key]),
-    delta: next.resources[resource.key] - before[resource.key],
-  }));
+  const rows = [
+    { key: "storedPower", label: "Power", icon: "bolt", max: 100 },
+    { key: "lifeSupportCondition", label: "Air", icon: "drop", max: 100 },
+    { key: "food", label: "Food", icon: "leaf", max: 100 },
+  ];
 
   const report = {
     day: state.day,
-    title: "Sol 1 report",
-    changes,
-    notes,
-    flagsAdded,
-    crew: [
-      `Kai fatigue: ${beforeCrew.kai} → ${next.crew.kai.fatigue}`,
-      `Nova fatigue: ${beforeCrew.nova} → ${next.crew.nova.fatigue}`,
-      `Rex fatigue: ${beforeCrew.rex} → ${next.crew.rex.fatigue}`,
-    ],
+    title: "Sol 1 done!",
+    headline: POWER_NOTES[powerChoice] ?? "The outpost made it through the night.",
+    changes: rows.map((row) => ({
+      ...row,
+      before: before[row.key],
+      after: next.resources[row.key],
+      delta: next.resources[row.key] - before[row.key],
+    })),
+    note: "Everyone is safe in the dome.",
     nextDay: {
-      kicker: "SOL 2 · NEXT BUILD",
-      title: "The water recycler",
-      body:
-        "Nova's filter is due. Sol 2 will ask you to split water between the recycler, " +
-        "the greenhouse, and the reserve, using the CSA food-production toolkit as a reference.",
+      icon: "drop",
+      kicker: "SOL 2",
+      title: "Water day",
+      line: "Nova will clean the water filter. The greenhouse needs a drink too.",
     },
-    sources: [
-      "NASA DONKI notifications — preliminary CCMC space-weather research, retrieved 2026-11-13.",
-      "NASA Mars Trek — MRO CTX Jezero mosaic, site context only.",
-      "Game resource values are illustrative and are not NASA measurements.",
-    ],
+    source: "Space weather: NASA DONKI (real data).",
   };
 
   return {
-    state: {
-      ...next,
-      lastReport: report,
-    },
+    state: { ...next, lastReport: report },
     report,
   };
 }

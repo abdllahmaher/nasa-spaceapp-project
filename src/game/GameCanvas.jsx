@@ -12,32 +12,44 @@ import {
   buildPanorama,
   drawDebugOverlay,
   drawEntity,
+  drawEntityBar,
   drawPanorama,
   drawPrompt,
 } from "./engine/render";
+
+const CREW_IDS = ["kai", "nova", "rex"];
 
 export default function GameCanvas({
   paused = false,
   inputEnabled = true,
   startLanded = false,
+  status = {},
+  cinematic = null,
   onInteract,
   onIntroComplete,
+  onCinematicDone,
 }) {
   const canvasRef = useRef(null);
 
   // The effect runs once, so live props are read through refs.
   const pausedRef = useRef(paused);
   const inputEnabledRef = useRef(inputEnabled);
+  const statusRef = useRef(status);
+  const cinematicRef = useRef(cinematic);
   const onInteractRef = useRef(onInteract);
   const onIntroCompleteRef = useRef(onIntroComplete);
+  const onCinematicDoneRef = useRef(onCinematicDone);
   const startLandedRef = useRef(startLanded);
 
   useEffect(() => {
     pausedRef.current = paused;
     inputEnabledRef.current = inputEnabled;
+    statusRef.current = status;
+    cinematicRef.current = cinematic;
     onInteractRef.current = onInteract;
     onIntroCompleteRef.current = onIntroComplete;
-  }, [paused, inputEnabled, onInteract, onIntroComplete]);
+    onCinematicDoneRef.current = onCinematicDone;
+  }, [paused, inputEnabled, status, cinematic, onInteract, onIntroComplete, onCinematicDone]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,19 +62,10 @@ export default function GameCanvas({
 
     const input = createInput(window);
     const player = createPlayer();
-    const camera = createCamera(player.x);
+    const camera = createCamera(WORLD.introFocusX);
     const entities = prepareEntities(SCENE.entities);
     const rocket = entities.find((entity) => entity.id === "arrival-rocket");
-
-    // Temporary QA hook: lets the headless harness place the commander.
-    window.__MARS_QA__ = {
-      player,
-      entities,
-      teleport(x, y = player.y) {
-        player.x = x;
-        player.y = y;
-      },
-    };
+    const crew = entities.filter((entity) => CREW_IDS.includes(entity.id));
 
     let images = new Map();
     let panoramas = [];
@@ -71,10 +74,15 @@ export default function GameCanvas({
     let debug = false;
     let disposed = false;
     let introDone = startLandedRef.current;
+    let arrived = startLandedRef.current;
+    let introWait = 0;
     let wasPaused = false;
+    let task = null;
+    let handledTask = 0;
 
     if (startLandedRef.current) {
       rocket?.behavior?.skip?.();
+      for (const member of crew) member.x = member.homeX ?? member.x;
     }
 
     const ready = () => panoramas.length > 0 && spritesheet !== null;
@@ -93,13 +101,10 @@ export default function GameCanvas({
 
       const cameraLeft = camera.getLeft();
 
-      // 1. Panorama layers that always sit behind everything.
       for (const entry of panoramas) {
         if (entry.layer.sortY === null) drawPanorama(ctx, entry.panorama, cameraLeft);
       }
 
-      // 2. Depth-sorted pass: sorted panorama layers, entities and the player,
-      //    ordered by their ground line (lower on screen = closer = on top).
       const copies = visibleEntities(entities, period, cameraLeft);
       const drawables = [];
 
@@ -112,7 +117,6 @@ export default function GameCanvas({
       }
 
       for (const copy of copies) {
-        // The entity being fixed wobbles a little.
         if (
           player.fixHitTimer > 0 &&
           player.fixTarget &&
@@ -128,12 +132,22 @@ export default function GameCanvas({
         });
       }
 
-      drawables.push({ sortY: player.y, draw: () => drawPlayer(ctx, player, cameraLeft, spritesheet) });
+      drawables.push({
+        sortY: player.y,
+        draw: () => drawPlayer(ctx, player, cameraLeft, spritesheet),
+      });
       drawables.sort((a, b) => a.sortY - b.sortY);
 
       for (const item of drawables) item.draw();
 
-      // 3. Interaction prompt (only while the commander is in control).
+      // Chunky pixel bars above machines and crew.
+      for (const copy of copies) {
+        const targetId = copy.entity.interactive?.targetId;
+        if (targetId && statusRef.current?.[targetId]) {
+          drawEntityBar(ctx, copy, statusRef.current[targetId], images);
+        }
+      }
+
       if (inputEnabledRef.current && !pausedRef.current && player.z <= 0) {
         const target = findInteractable(
           entities,
@@ -145,24 +159,109 @@ export default function GameCanvas({
         if (target) drawPrompt(ctx, target, images, cameraLeft);
       }
 
-      // 4. Debug overlay.
       if (debug) {
         drawDebugOverlay(ctx, copies, images, cameraLeft, period, player, entities.length);
       }
+    };
+
+    const startArrival = () => {
+      for (const [index, member] of crew.entries()) {
+        member.behavior?.walkTo?.(member.homeX ?? member.x, index * 0.2);
+      }
+    };
+
+    const updateIntro = (dt) => {
+      if (!arrived && rocket?.behavior?.getState?.() === "landed") {
+        arrived = true;
+        startArrival();
+      }
+
+      // Layla steps away from the lander while the crew heads to their posts.
+      const dx = WORLD.introExitX - player.x;
+      if (Math.abs(dx) > 1) {
+        const step = Math.min(Math.abs(dx), 110 * dt);
+        player.x += Math.sign(dx) * step;
+        player.facing = Math.sign(dx);
+        player.action = "walk";
+        player.animTime += dt;
+      } else if (player.action !== "idle") {
+        player.action = "idle";
+        player.animTime = 0;
+      }
+
+      if (arrived && crew.every((member) => !member.behavior?.isBusy?.())) {
+        introWait += dt;
+        if (introWait > 0.9) {
+          introDone = true;
+          onIntroCompleteRef.current?.();
+        }
+      }
+    };
+
+    const updateTask = (dt) => {
+      if (!task && cinematicRef.current && cinematicRef.current.token !== handledTask) {
+        const next = cinematicRef.current;
+        const actor = entities.find((entity) => entity.id === next.crewId);
+        const machine = entities.find(
+          (entity) => entity.interactive?.targetId === next.targetId,
+        );
+
+        if (actor && machine) {
+          const targetX = machine.x + 44 / period;
+          actor.behavior?.walkTo?.(targetX);
+          task = {
+            token: next.token,
+            actor,
+            machine,
+            work: next.work ?? 1.6,
+            phase: "walk",
+          };
+        } else {
+          handledTask = next.token;
+          onCinematicDoneRef.current?.(next.token);
+        }
+      }
+
+      if (!task) return;
+
+      const { actor, machine } = task;
+      if (task.phase === "walk" && !actor.behavior?.isBusy?.()) {
+        actor.behavior?.work?.(task.work, true);
+        task.phase = "work";
+      } else if (task.phase === "work" && !actor.behavior?.isBusy?.()) {
+        handledTask = task.token;
+        actor.behavior?.walkTo?.(actor.homeX ?? actor.x);
+        onCinematicDoneRef.current?.(task.token);
+        task = null;
+        return;
+      }
+
+      camera.update(
+        dt,
+        (actor.x + machine.x) * 0.5 * period,
+      );
     };
 
     const update = (dt) => {
       const pausedNow = pausedRef.current;
 
       if (pausedNow) {
-        // Drop any keys held when a modal opened, so closing it doesn't make
-        // the commander walk or interact unexpectedly.
         if (!wasPaused) input.clear();
         wasPaused = true;
       } else {
         wasPaused = false;
 
-        for (const entity of entities) entity.behavior?.update?.(dt);
+        for (const entity of entities) entity.behavior?.update?.(dt, period);
+
+        if (!introDone) {
+          updateIntro(dt);
+          camera.update(dt, WORLD.introFocusX);
+          draw();
+          return;
+        }
+
+        updateTask(dt);
+        const focused = Boolean(task);
 
         if (inputEnabledRef.current) {
           updatePlayer(player, dt, input, entities, period);
@@ -174,13 +273,9 @@ export default function GameCanvas({
           }
         }
 
-        if (!introDone && rocket?.behavior?.getState?.() === "landed") {
-          introDone = true;
-          onIntroCompleteRef.current?.();
-        }
+        if (!focused) camera.update(dt, player.x);
       }
 
-      camera.update(dt, player.x);
       if (input.consume("debug")) debug = !debug;
       draw();
     };

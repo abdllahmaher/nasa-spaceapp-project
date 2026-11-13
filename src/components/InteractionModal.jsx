@@ -1,5 +1,32 @@
 import { useEffect } from "react";
-import { canAfford, formatCost } from "../logic/resources";
+import Portrait from "./Portrait";
+import PixelIcon from "./PixelIcon";
+import { PORTRAITS } from "../data/portraits";
+import { canAfford } from "../logic/resources";
+
+const COST_ICONS = {
+  spareParts: "wrench",
+  storedPower: "bolt",
+  powerCondition: "bolt",
+  water: "drop",
+  food: "leaf",
+  lifeSupportCondition: "drop",
+  habitatSafety: "home",
+};
+
+function CostPips({ cost }) {
+  if (!cost) return null;
+
+  return (
+    <span className="cost-pips">
+      {Object.entries(cost).flatMap(([key, amount]) =>
+        Array.from({ length: Math.min(4, amount) }, (_, i) => (
+          <PixelIcon key={`${key}-${i}`} name={COST_ICONS[key] ?? "wrench"} size={10} />
+        )),
+      )}
+    </span>
+  );
+}
 
 export default function InteractionModal({ content, resources, onChoose, onClose }) {
   useEffect(() => {
@@ -10,6 +37,7 @@ export default function InteractionModal({ content, resources, onChoose, onClose
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onClose]);
 
+  const speaker = PORTRAITS[content.speaker] ?? PORTRAITS.layla;
   const resolved =
     content.chosenId && content.choices
       ? content.choices.find((choice) => choice.id === content.chosenId)
@@ -18,65 +46,76 @@ export default function InteractionModal({ content, resources, onChoose, onClose
   const showChoices = content.choices && !resultText;
 
   return (
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="interaction-title">
-      <article className="modal-card interaction-card">
-        <p className="modal-eyebrow">{content.eyebrow}</p>
-        <h2 id="interaction-title" className="modal-title">
-          {content.title}
-        </h2>
-
-        <div className="modal-body">
-          {content.body.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
+    <div
+      className="vn-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="interaction-title"
+    >
+      <div className="vn-stage">
+        <div className="vn-portrait-wrap">
+          <Portrait id={content.speaker} size={142} />
         </div>
 
-        {content.quote && <blockquote className="modal-quote">{content.quote}</blockquote>}
+        <article className="vn-panel">
+          <p className="vn-speaker">
+            {speaker.name} <span>{speaker.role}</span>
+          </p>
+          <h2 id="interaction-title" className="vn-title">
+            {content.title}
+          </h2>
 
-        {resultText && (
-          <div className="result-box">
-            <p className="section-label">RESULT</p>
-            <p>{resultText}</p>
+          {!resultText && (
+            <div className="vn-lines">
+              {content.body.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          )}
+
+          {resultText && (
+            <div className="vn-result">
+              <PixelIcon name="star" size={16} />
+              <p>{resultText}</p>
+            </div>
+          )}
+
+          {showChoices && (
+            <div className="vn-choices">
+              {content.choices.map((choice) => {
+                const affordable = canAfford(resources, choice.cost);
+                return (
+                  <button
+                    type="button"
+                    key={choice.id}
+                    className="vn-choice"
+                    disabled={!affordable}
+                    onClick={() => onChoose(choice)}
+                  >
+                    <span className="vn-choice-icon">
+                      <PixelIcon name={choice.icon ?? "wrench"} size={14} />
+                    </span>
+                    <span className="vn-choice-text">
+                      <span className="vn-choice-label">{choice.label}</span>
+                      <span className="vn-choice-detail">{choice.detail}</span>
+                    </span>
+                    <CostPips cost={choice.cost} />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="vn-actions">
+            <span className="vn-hint">
+              {showChoices ? "Pick one!" : resultText ? "Nice work, Commander." : "What a view!"}
+            </span>
+            <button type="button" className="ghost-button" onClick={onClose}>
+              {resultText ? "Yay!" : "Okay!"}
+            </button>
           </div>
-        )}
-
-        {showChoices && (
-          <div className="choice-list">
-            {content.choices.map((choice) => {
-              const affordable = canAfford(resources, choice.cost);
-              return (
-                <button
-                  type="button"
-                  key={choice.id}
-                  className="choice-button"
-                  disabled={!affordable}
-                  onClick={() => onChoose(choice)}
-                >
-                  <span className="choice-topline">
-                    <span className="choice-label">{choice.label}</span>
-                    {choice.cost && (
-                      <span className="choice-cost">{formatCost(choice.cost)}</span>
-                    )}
-                  </span>
-                  <span className="choice-detail">{choice.detail}</span>
-                  {!affordable && (
-                    <span className="choice-warning">Not enough resources</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {content.note && <p className="source-meta">{content.note}</p>}
-        {content.source && <p className="source-meta">{content.source}</p>}
-
-        <div className="modal-actions">
-          <button type="button" className="ghost-button" onClick={onClose}>
-            {resultText ? "Back to EVA" : "Close"}
-          </button>
-        </div>
-      </article>
+        </article>
+      </div>
     </div>
   );
 }

@@ -46,7 +46,8 @@ export function applyChoice(state, interaction, choice) {
   return {
     ok: true,
     state: next,
-    result: choice.result ?? "Decision recorded.",
+    result: choice.result ?? "Done!",
     toast: choice.toast ?? `${interaction.title}: ${choice.label}`,
+    scene: choice.scene ?? null,
   };
 }

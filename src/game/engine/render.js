@@ -87,6 +87,8 @@ export function drawEntity(ctx, copy, images) {
   const image = images.get(src);
   if (!image) return;
 
+  const facingLeft = view?.flip ?? flip;
+
   const { frame, w, h } = entityMetrics(entity, view, image);
   const anchor = view?.anchor ?? entity.anchor ?? 1;
   const top = entity.y + (view?.offsetY ?? 0) - h * anchor;
@@ -114,7 +116,7 @@ export function drawEntity(ctx, copy, images) {
   ctx.save();
   ctx.imageSmoothingEnabled = false;
 
-  if (flip) {
+  if (facingLeft) {
     ctx.translate(screenX, top);
     ctx.scale(-1, 1);
     ctx.drawImage(image, frame.x, frame.y, frame.w, frame.h, -w / 2, 0, w, h);
@@ -171,6 +173,70 @@ export function drawPrompt(ctx, target, images, cameraLeft) {
     ctx.fillStyle = "#ffd9e0";
     ctx.textAlign = "left";
     ctx.fillText(label, boxX + padding, y + 0.5);
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Chunky pixel status bar pinned above an outpost station or crew member.
+ * No numbers: eight blocks and a tiny glyph, readable at a glance.
+ */
+const GLYPHS = {
+  bolt: ["..###..", "..##...", ".###...", "..####.", "...###.", "..##...", ".##...."],
+  drop: ["...#...", "..###..", ".#####.", ".#####.", ".#####.", "..###..", "...#..."],
+  leaf: ["....##.", "..####.", ".#####.", ".#####.", "..###..", "...#...", "...#..."],
+  wrench: [".##..#.", "###.##.", ".####..", "..##...", ".###...", "###.##.", ".#...#."],
+  home: ["...#...", "..###..", ".#####.", "#######", "##...##", "##...##", "#######"],
+  flask: ["..###..", "...#...", "..###..", ".#####.", ".#####.", ".#####.", ".#####."],
+  heart: [".##.##.", "#######", "#######", ".#####.", "..###..", "...#...", "......."],
+};
+
+function drawGlyph(ctx, glyph, x, y, color) {
+  ctx.fillStyle = color;
+  glyph.forEach((row, ry) => {
+    for (let rx = 0; rx < row.length; rx += 1) {
+      if (row[rx] === "#") ctx.fillRect(x + rx, y + ry, 1, 1);
+    }
+  });
+}
+
+export function drawEntityBar(ctx, copy, status, images) {
+  const { entity, screenX } = copy;
+  const top = entityTop(entity, images);
+  if (top === null) return;
+
+  const segments = 8;
+  const segW = 4;
+  const gap = 1;
+  const barW = segments * (segW + gap) - gap;
+  const iconW = 7;
+  const pad = 3;
+  const boxW = iconW + 4 + barW + pad * 2;
+  const boxH = 15;
+  const x = Math.round(screenX - boxW / 2);
+  const y = Math.round(top - boxH - 26);
+  const filled = Math.round((Math.max(0, Math.min(100, status.value)) / 100) * segments);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.fillStyle = "rgba(18, 10, 20, 0.78)";
+  ctx.strokeStyle = "rgba(255, 232, 214, 0.24)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x + 0.5, y + 0.5, boxW - 1, boxH - 1, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  drawGlyph(ctx, GLYPHS[status.icon] ?? GLYPHS.bolt, x + pad, y + 4, status.tint);
+
+  const barX = x + pad + iconW + 4;
+  const barY = y + 5;
+  for (let i = 0; i < segments; i += 1) {
+    ctx.fillStyle =
+      i < filled ? status.tint : "rgba(255, 232, 214, 0.16)";
+    ctx.fillRect(barX + i * (segW + gap), barY, segW, 5);
   }
 
   ctx.restore();

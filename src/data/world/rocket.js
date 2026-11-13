@@ -48,7 +48,7 @@ export const ROCKET_ENTITIES = [
     scale: 0.5,
     repeat: false,
     mirror: false,
-    blocking: true,
+    blocking: false,
     footR: 46,
     interactive: {
       kind: "inspect",

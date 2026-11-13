@@ -38,11 +38,13 @@ export function prepareEntities(defs) {
       throw new Error(`Entity "${def.id}" needs x as a fraction between 0 and 1.`);
     }
 
-    return {
+    const entity = {
       ...DEFAULTS,
       ...def,
       behavior: createBehavior(def),
     };
+    entity.behavior?.attach?.(entity);
+    return entity;
   });
 }
 

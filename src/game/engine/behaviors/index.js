@@ -1,15 +1,16 @@
-import { createIdleBehavior } from "./idle";
+import { createCrewBehavior } from "./crew";
 import { createRocketBehavior } from "./rocket";
 
 /**
  * Behaviors give an entity a little state machine (arrival animations,
- * future NPC routines, ...). Returning null means "plain static entity".
+ * crew routines, ...). Returning null means "plain static entity".
  *
  * Behaviour interface:
- *   update(dt)
+ *   attach(entity)
+ *   update(dt, period)
  *   isBlocking()      → whether collisions are active right now
  *   isInteractable()  → whether the player can interact right now
- *   getView()         → { src, frame, offsetY?, scaleMul?, shadowK? }
+ *   getView()         → { src, frame, offsetY?, scaleMul?, shadowK?, flip? }
  */
 export function createBehavior(def) {
   if (!def.behavior) return null;
@@ -17,8 +18,8 @@ export function createBehavior(def) {
   switch (def.behavior.type) {
     case "rocket":
       return createRocketBehavior(def.sprite.clips, def.behavior.config);
-    case "idle":
-      return createIdleBehavior(def.sprite.clips, def.behavior.config);
+    case "crew":
+      return createCrewBehavior(def.sprite.clips, def.behavior.config);
     default:
       console.warn(`Unknown entity behavior: ${def.behavior.type}`);
       return null;

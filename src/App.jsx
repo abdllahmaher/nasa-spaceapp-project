@@ -9,6 +9,7 @@ import Toast from "./components/Toast";
 import { createInitialState } from "./logic/initialState";
 import { applyChoice, markSeen } from "./logic/choices";
 import { endDay } from "./logic/dailyCycle";
+import { buildStatus } from "./logic/status";
 import { clearGame, loadGame, saveGame } from "./logic/save";
 import { getDay } from "./story/days";
 import "./App.css";
@@ -23,18 +24,23 @@ export default function App() {
   });
   const [active, setActive] = useState(null);
   const [report, setReport] = useState(() => SAVED_MISSION?.lastReport ?? null);
+  const [cinematic, setCinematic] = useState(null);
   const [toast, setToast] = useState("");
   const toastTimer = useRef(null);
+  const taskToken = useRef(0);
+  const pendingBubble = useRef(null);
 
   const day = getDay(state.day);
   const objectives = day.objectives.map((objective) => ({
     ...objective,
     done: objective.check(state),
-    progress: objective.progress?.(state),
+    progress: objective.progress?.(state) ?? 0,
+    progressMax: objective.progressMax ?? 0,
   }));
   const canEndDay = objectives.every((objective) => objective.done);
+  const status = buildStatus(state);
 
-  const paused = phase !== "intro" && phase !== "playing";
+  const paused = !["intro", "playing", "cinematic"].includes(phase);
   const inputEnabled = phase === "playing";
 
   const showToast = useCallback((message) => {
@@ -80,6 +86,22 @@ export default function App() {
 
     setState(result.state);
     saveGame(result.state);
+
+    if (result.scene) {
+      // Hide the bubble, show the crew doing the job, then report back.
+      pendingBubble.current = {
+        ...active,
+        chosenId: choice.id,
+        result: result.result,
+        toast: result.toast,
+      };
+      setActive(null);
+      taskToken.current += 1;
+      setCinematic({ token: taskToken.current, ...result.scene });
+      setPhase("cinematic");
+      return;
+    }
+
     setActive((current) => ({
       ...current,
       chosenId: choice.id,
@@ -87,6 +109,20 @@ export default function App() {
     }));
     showToast(result.toast);
   };
+
+  const handleCinematicDone = useCallback(() => {
+    setCinematic(null);
+    const bubble = pendingBubble.current;
+    pendingBubble.current = null;
+
+    if (bubble) {
+      setActive(bubble);
+      setPhase("interaction");
+      showToast(bubble.toast);
+    } else {
+      setPhase("playing");
+    }
+  }, [showToast]);
 
   const handleCloseInteraction = () => {
     setActive(null);
@@ -128,7 +164,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <div className="app-brand">
-          <p className="app-kicker">NASA Space Apps · Junior Astronaut Mission Trainer</p>
+          <p className="app-kicker">Junior Astronaut Mission Trainer</p>
           <h1>Mars Outpost</h1>
         </div>
         <div className="app-header-right">
@@ -146,15 +182,17 @@ export default function App() {
           paused={paused}
           inputEnabled={inputEnabled}
           startLanded={Boolean(SAVED_MISSION)}
+          status={status}
+          cinematic={cinematic}
           onInteract={handleInteract}
           onIntroComplete={handleIntroComplete}
+          onCinematicDone={handleCinematicDone}
         />
 
-        {(phase === "playing" || phase === "interaction") && (
+        {["playing", "interaction", "cinematic"].includes(phase) && (
           <HUD
             day={state.day}
             location={day.location}
-            coordinates={day.coordinates}
             objectives={objectives}
             resources={state.resources}
             onEndDay={handleEndDay}
@@ -165,7 +203,7 @@ export default function App() {
         {phase === "intro" && (
           <div className="intro-caption">
             <span className="status-dot" aria-hidden="true" />
-            Touchdown sequence · Sol 1
+            Touchdown · Sol 1
           </div>
         )}
 
@@ -194,9 +232,9 @@ export default function App() {
       <footer className="app-footer">
         <span>
           <kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump ·{" "}
-          <kbd>E</kbd> inspect / talk · <kbd>F2</kbd> debug
+          <kbd>E</kbd> talk / check
         </span>
-        <span>Snapshots: NASA DONKI · Mars Trek. Game values are illustrative.</span>
+        <span>Real space-weather data: NASA DONKI.</span>
       </footer>
     </div>
   );

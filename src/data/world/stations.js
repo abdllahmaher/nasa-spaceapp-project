@@ -15,7 +15,7 @@ export const OUTPOST_STATIONS = [
     scale: 1.15,
     repeat: false,
     mirror: false,
-    blocking: true,
+    blocking: false,
     footR: 30,
     shadow: true,
     interactive: {
@@ -32,7 +32,7 @@ export const OUTPOST_STATIONS = [
     scale: 1.15,
     repeat: false,
     mirror: false,
-    blocking: true,
+    blocking: false,
     footR: 30,
     shadow: true,
     interactive: {
@@ -49,7 +49,7 @@ export const OUTPOST_STATIONS = [
     scale: 1.25,
     repeat: false,
     mirror: false,
-    blocking: true,
+    blocking: false,
     footR: 58,
     shadow: true,
     interactive: {
