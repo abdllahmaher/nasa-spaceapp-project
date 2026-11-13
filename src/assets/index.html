@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lyra & Kai · space test · full states</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 30%, #0a0f1e, #03050b);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', system-ui, monospace;
+    }
+    .game-wrapper {
+      background: #0b0f17;
+      padding: 20px;
+      border-radius: 32px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 0 2px #2a3a4e inset;
+    }
+    canvas {
+      display: block;
+      width: 900px;
+      height: 600px;
+      border-radius: 24px;
+      box-shadow: 0 0 30px #3e6b8c44, 0 0 8px #7fa9c9;
+      cursor: crosshair;
+    }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      padding: 0 10px;
+      color: #b7d9f0;
+      text-shadow: 0 0 8px #3e7ea0;
+      font-weight: 500;
+      letter-spacing: 1px;
+    }
+    .hud button {
+      background: #1e2c3a;
+      border: none;
+      color: #ddf0ff;
+      font-weight: bold;
+      padding: 8px 20px;
+      border-radius: 40px;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 0 0 1px #3d5b74, 0 5px 0 #0a1118;
+      transition: 0.08s linear;
+      letter-spacing: 1px;
+    }
+    .hud button:active {
+      transform: translateY(3px);
+      box-shadow: 0 0 0 1px #3d5b74, 0 2px 0 #0a1118;
+    }
+    .hud .status {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .hud .status span {
+      background: #0e1a24cc;
+      padding: 6px 14px;
+      border-radius: 40px;
+      backdrop-filter: blur(2px);
+      border: 1px solid #2e4e66;
+      font-size: 13px;
+    }
+    .hud .status i {
+      font-style: normal;
+      color: #9fd0ff;
+      font-weight: 700;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 20px;
+      background: #1c3a4e;
+      color: #a0e0ff;
+      font-size: 11px;
+      margin-left: 4px;
+    }
+  </style>
+</head>
+<body>
+<div class="game-wrapper">
+  <canvas id="gameCanvas" width="900" height="600"></canvas>
+  <div class="hud">
+    <div class="status">
+      <span>🚀 <i>LYRA</i> — WASD/arrows · SHIFT run · SPACE jump · E mine · H hurt · V victory</span>
+      <span>🛰️ <i>KAI</i> — follows · reacts</span>
+    </div>
+    <button id="resetBtn">⟲ RESET</button>
+  </div>
+</div>
+<script>
+  (function() {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = 900, H = 600;
+
+    // ---------- LOAD SPRITE SHEETS ----------
+    const lyraImg = new Image();
+    const kaiImg = new Image();
+
+    // Animation metadata — fps, frame count, loop
+    const ANIM = {
+      idle:    { frames: 8, fps: 6,  loop: true  },
+      walk:    { frames: 8, fps: 10, loop: true  },
+      run:     { frames: 8, fps: 14, loop: true  },
+      jump:    { frames: 6, fps: 8,  loop: false },
+      hurt:    { frames: 4, fps: 8,  loop: false },
+      mine:    { frames: 8, fps: 12, loop: true  },
+      victory: { frames: 6, fps: 8,  loop: false }
+    };
+
+    // Row Y offsets in the spritesheet for each animation
+    const ROW_Y = {
+      idle: 0, walk: 128, run: 256, jump: 384,
+      hurt: 512, mine: 640, victory: 768
+    };
+
+    // ---------- ENTITY ----------
+    class SpriteEntity {
+      constructor(name, img, x, y, sheetKey) {
+        this.name = name;
+        this.img = img;
+        this.x = x;
+        this.y = y;
+        this.sheetKey = sheetKey;
+
+        this.anim = 'idle';
+        this.frame = 0;
+        this.timer = 0;
+        this.frameDuration = 1 / ANIM.idle.fps;
+
+        this.vx = 0; this.vy = 0;
+        this.speed = 180;
+        this.runMultiplier = 1.6;
+        this.facing = 1;
+
+        this.isJumping = false;
+        this.jumpTimer = 0;
+        this.jumpDuration = 0.55;
+
+        // State machine: pending state to return to after a non-looping anim
+        this.returnState = null;      // e.g. 'idle', 'walk'
+        this.returnDelay = 0;         // countdown until we switch back
+        this.forcedLock = 0;          // seconds during which manual state changes are blocked
+
+        // NPC behaviour
+        this.wanderAngle = Math.random() * Math.PI * 2;
+        this.wanderTimer = 0;
+
+        // Kai-specific reaction cooldowns
+        this.reactCooldown = 0;
+
+        this.setAnimation('idle', 0);
+      }
+
+      // Set an animation, optionally locking input for 'lockTime' seconds
+      setAnimation(name, lockTime = 0, returnState = null) {
+        if (!ANIM[name]) return;
+        this.anim = name;
+        this.frame = 0;
+        this.timer = 0;
+        this.frameDuration = 1 / ANIM[name].fps;
+        if (lockTime > 0) this.forcedLock = lockTime;
+        this.returnState = returnState;
+        // if returning, schedule the return after the full animation duration
+        if (returnState) {
+          const duration = ANIM[name].frames / ANIM[name].fps;
+          this.returnDelay = duration;
+        } else {
+          this.returnDelay = 0;
+        }
+      }
+
+      // Update animation frame + state machine timers
+      update(dt) {
+        // decrement forced lock
+        if (this.forcedLock > 0) this.forcedLock = Math.max(0, this.forcedLock - dt);
+
+        // decrement reaction cooldown
+        if (this.reactCooldown > 0) this.reactCooldown = Math.max(0, this.reactCooldown - dt);
+
+        // advance frame
+        this.timer += dt;
+        const data = ANIM[this.anim];
+        if (this.timer >= this.frameDuration) {
+          this.timer -= this.frameDuration;
+          if (data.loop) {
+            this.frame = (this.frame + 1) % data.frames;
+          } else {
+            // non-loop: clamp at last frame
+            if (this.frame < data.frames - 1) this.frame++;
+          }
+        }
+
+        // handle return-to-state countdown (non-looping anims that auto-return)
+        if (this.returnDelay > 0) {
+          this.returnDelay -= dt;
+          if (this.returnDelay <= 0) {
+            const target = this.returnState || 'idle';
+            this.returnState = null;
+            this.returnDelay = 0;
+            this.setAnimation(target, 0);
+          }
+        }
+      }
+
+      // Draw with optional flip
+      draw(ctx) {
+        if (!this.img || !this.img.complete || this.img.naturalWidth === 0) {
+          // fallback placeholder
+          ctx.save();
+          ctx.shadowColor = this.sheetKey === 'lyra' ? '#4aa0ff' : '#a04aff';
+          ctx.shadowBlur = 20;
+          ctx.fillStyle = this.sheetKey === 'lyra' ? '#4aa0ff' : '#a04aff';
+          ctx.fillRect(this.x, this.y, 128, 128);
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 22px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(this.name.toUpperCase(), this.x + 64, this.y + 72);
+          ctx.restore();
+          return;
+        }
+
+        const rowY = ROW_Y[this.anim] ?? 0;
+        const frameX = this.frame * 128;
+        const dx = this.x, dy = this.y;
+
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.55)';
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 6;
+
+        if (this.facing === -1) {
+          ctx.translate(dx + 64, dy + 64);
+          ctx.scale(-1, 1);
+          ctx.drawImage(this.img, frameX, rowY, 128, 128, -64, -64, 128, 128);
+        } else {
+          ctx.drawImage(this.img, frameX, rowY, 128, 128, dx, dy, 128, 128);
+        }
+        ctx.restore();
+
+        // Floating name tag for clarity
+        ctx.save();
+        ctx.font = 'bold 12px "Segoe UI", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = this.sheetKey === 'lyra' ? '#9fd0ff' : '#d0a0ff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText(this.name.toUpperCase(), this.x + 64, this.y - 8);
+        ctx.restore();
+      }
+    }
+
+    // ---------- GAME STATE ----------
+    let lyra, kai;
+    let keys = {};
+    let lastTime = 0;
+    let mineCombo = 0;              // counts consecutive mining actions for victory trigger
+    let mineComboTimer = 0;
+
+    const BOUNDS = { minX: 50, maxX: W - 178, minY: 70, maxY: H - 178 };
+
+    // particles
+    let particles = [];
+    // floating text popups
+    let popups = [];
+
+    // ---------- INIT ----------
+    function initGame() {
+      lyra = new SpriteEntity('Lyra', lyraImg, 200, 300, 'lyra');
+      kai  = new SpriteEntity('Kai',  kaiImg,  650, 300, 'kai');
+      lyra.facing = 1;
+      kai.facing = -1;
+
+      lyra.setAnimation('idle');
+      kai.setAnimation('idle');
+
+      particles = [];
+      popups = [];
+      mineCombo = 0;
+      mineComboTimer = 0;
+      keys = {};
+    }
+
+    // ---------- INPUT ----------
+    function addKeyHandlers() {
+      window.addEventListener('keydown', (e) => {
+        const k = e.key.toLowerCase();
+        if (['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+        keys[k] = true;
+        if (k === 'arrowleft') keys['a'] = true;
+        if (k === 'arrowright') keys['d'] = true;
+        if (k === 'arrowup') keys['w'] = true;
+        if (k === 'arrowdown') keys['s'] = true;
+
+        if (k === ' ' && !lyra.isJumping && lyra.forcedLock === 0) {
+          startJump(lyra);
+        }
+        if (k === 'e' && lyra.forcedLock === 0) {
+          performMine(lyra);
+        }
+        if (k === 'h' && lyra.forcedLock === 0) {
+          performHurt(lyra);
+        }
+        if (k === 'v' && lyra.forcedLock === 0) {
+          performVictory(lyra);
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        const k = e.key.toLowerCase();
+        keys[k] = false;
+        if (k === 'arrowleft') keys['a'] = false;
+        if (k === 'arrowright') keys['d'] = false;
+        if (k === 'arrowup') keys['w'] = false;
+        if (k === 'arrowdown') keys['s'] = false;
+      });
+
+      window.addEventListener('blur', () => { keys = {}; });
+
+      document.getElementById('resetBtn').addEventListener('click', initGame);
+    }
+
+    // ---------- ACTION HELPERS ----------
+    function startJump(entity) {
+      if (entity.isJumping) return;
+      entity.isJumping = true;
+      entity.jumpTimer = 0;
+      // non-looping with auto-return to idle
+      entity.setAnimation('jump', entity.jumpDuration, 'idle');
+    }
+
+    function performMine(entity) {
+      if (entity.anim === 'mine' || entity.isJumping) return;
+      entity.setAnimation('mine', 0); // loop for a moment, we handle the end manually
+      // manual return after 0.7s
+      entity.returnState = 'idle';
+      entity.returnDelay = 0.7;
+      entity.forcedLock = 0.7;
+
+      // particles
+      spawnParticles(entity.x + 64, entity.y + 90, 14);
+
+      // combo / victory trigger
+      if (entity === lyra) {
+        mineCombo++;
+        mineComboTimer = 1.6;
+        if (mineCombo >= 5) {
+          mineCombo = 0;
+          popups.push({ x: lyra.x + 64, y: lyra.y - 10, text: '⚡ VICTORY!', life: 1.6, maxLife: 1.6, color: '#ffe066' });
+          // Lyra and Kai both celebrate
+          setTimeout(() => {
+            if (lyra) performVictory(lyra);
+            if (kai && kai.reactCooldown === 0) {
+              kai.setAnimation('victory', 0.8, 'idle');
+              kai.reactCooldown = 1.2;
+            }
+          }, 120);
+        }
+        // Kai reacts: sometimes runs toward Lyra, sometimes jumps, sometimes mines alongside
+        if (kai && kai.reactCooldown === 0) {
+          const r = Math.random();
+          if (r < 0.3) {
+            // Kai jumps
+            kai.setAnimation('jump', 0.5, 'idle');
+            kai.isJumping = true;
+            kai.jumpTimer = 0;
+            kai.jumpDuration = 0.5;
+            kai.reactCooldown = 1.0;
+          } else if (r < 0.6) {
+            // Kai mines in solidarity
+            kai.setAnimation('mine', 0.7, 'idle');
+            kai.reactCooldown = 1.2;
+          } else if (r < 0.85) {
+            // Kai runs a little loop around Lyra
+            const angle = Math.random() * Math.PI * 2;
+            kai.x += Math.cos(angle) * 40;
+            kai.y += Math.sin(angle) * 40;
+            kai.setAnimation('run', 0.5, 'idle');
+            kai.reactCooldown = 1.0;
+          }
+        }
+      }
+    }
+
+    function performHurt(entity) {
+      if (entity.anim === 'hurt') return;
+      entity.setAnimation('hurt', 0.55, 'idle');
+      // small red popup
+      popups.push({ x: entity.x + 64, y: entity.y, text: 'OUCH!', life: 0.9, maxLife: 0.9, color: '#ff5a5a' });
+      // Kai reacts to Lyra getting hurt
+      if (entity === lyra && kai && kai.reactCooldown === 0) {
+        kai.setAnimation('hurt', 0.5, 'idle'); // sympathetic flinch
+        kai.reactCooldown = 1.0;
+      }
+    }
+
+    function performVictory(entity) {
+      if (entity.anim === 'victory') return;
+      entity.setAnimation('victory', 0.8, 'idle');
+      // celebratory particles
+      spawnParticles(entity.x + 64, entity.y + 40, 22, '#ffe066');
+      popups.push({ x: entity.x + 64, y: entity.y - 20, text: 'VICTORY!', life: 1.2, maxLife: 1.2, color: '#ffe066' });
+    }
+
+    // ---------- PARTICLES / POPUPS ----------
+    function spawnParticles(x, y, count = 12, colorBase = null) {
+      for (let i = 0; i < count; i++) {
+        const hue = colorBase ? null : 30 + Math.random() * 30;
+        particles.push({
+          x, y,
+          vx: (Math.random() - 0.5) * 220,
+          vy: (Math.random() - 0.8) * 220,
+          life: 0.5 + Math.random() * 0.4,
+          size: 2 + Math.random() * 5,
+          color: colorBase || `hsl(${hue}, 90%, 70%)`
+        });
+      }
+    }
+
+    function updateParticles(dt) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vy += 240 * dt;
+        p.life -= dt;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+    }
+
+    function updatePopups(dt) {
+      for (let i = popups.length - 1; i >= 0; i--) {
+        const p = popups[i];
+        p.y -= 40 * dt;
+        p.life -= dt;
+        if (p.life <= 0) popups.splice(i, 1);
+      }
+    }
+
+    // ---------- PLAYER UPDATE ----------
+    function updatePlayer(dt) {
+      if (!lyra) return;
+
+      // combo timer
+      if (mineComboTimer > 0) {
+        mineComboTimer -= dt;
+        if (mineComboTimer <= 0) mineCombo = 0;
+      }
+
+      // jump timer
+      if (lyra.isJumping) {
+        lyra.jumpTimer += dt;
+        if (lyra.jumpTimer >= lyra.jumpDuration) {
+          lyra.isJumping = false;
+          // jump anim will auto-return via returnDelay; ensure idle if needed
+          if (lyra.anim === 'jump' && lyra.returnDelay <= 0) {
+            lyra.setAnimation('idle');
+          }
+        }
+      }
+
+      // movement input
+      let mx = 0, my = 0;
+      if (keys['w'] || keys['arrowup']) my -= 1;
+      if (keys['s'] || keys['arrowdown']) my += 1;
+      if (keys['a'] || keys['arrowleft']) mx -= 1;
+      if (keys['d'] || keys['arrowright']) mx += 1;
+
+      const running = !!keys['shift'];
+      const canMove = lyra.forcedLock === 0;
+
+      if (canMove && (mx !== 0 || my !== 0)) {
+        const len = Math.hypot(mx, my);
+        mx /= len; my /= len;
+        const speed = (running ? lyra.speed * lyra.runMultiplier : lyra.speed) * (lyra.isJumping ? 0.8 : 1);
+        lyra.x += mx * speed * dt;
+        lyra.y += my * speed * dt;
+        if (mx > 0.1) lyra.facing = 1;
+        else if (mx < -0.1) lyra.facing = -1;
+
+        if (!lyra.isJumping) {
+          lyra.setAnimation(running ? 'run' : 'walk', 0);
+        }
+      } else if (canMove && !lyra.isJumping && lyra.anim !== 'hurt' && lyra.anim !== 'victory' && lyra.anim !== 'mine') {
+        lyra.setAnimation('idle', 0);
+      }
+
+      // clamp
+      lyra.x = Math.max(BOUNDS.minX, Math.min(BOUNDS.maxX, lyra.x));
+      lyra.y = Math.max(BOUNDS.minY, Math.min(BOUNDS.maxY, lyra.y));
+    }
+
+    // ---------- NPC UPDATE ----------
+    function updateNPC(dt) {
+      if (!kai) return;
+
+      // Kai's jump timer
+      if (kai.isJumping) {
+        kai.jumpTimer += dt;
+        if (kai.jumpTimer >= kai.jumpDuration) {
+          kai.isJumping = false;
+          if (kai.anim === 'jump' && kai.returnDelay <= 0) kai.setAnimation('idle');
+        }
+      }
+
+      // if Kai is locked in an animation, don't move
+      if (kai.forcedLock > 0) return;
+
+      const dx = lyra.x - kai.x;
+      const dy = lyra.y - kai.y;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist > 140) {
+        // run toward player
+        const angle = Math.atan2(dy, dx);
+        const speed = 165;
+        kai.x += Math.cos(angle) * speed * dt;
+        kai.y += Math.sin(angle) * speed * dt;
+        if (dx > 5) kai.facing = 1;
+        else if (dx < -5) kai.facing = -1;
+        kai.setAnimation('run', 0);
+        kai.isJumping = false;
+      } else if (dist > 70) {
+        // walk toward player
+        const angle = Math.atan2(dy, dx);
+        const speed = 90;
+        kai.x += Math.cos(angle) * speed * dt;
+        kai.y += Math.sin(angle) * speed * dt;
+        if (dx > 5) kai.facing = 1;
+        else if (dx < -5) kai.facing = -1;
+        kai.setAnimation('walk', 0);
+        kai.isJumping = false;
+      } else {
+        // wander when close
+        kai.wanderTimer -= dt;
+        if (kai.wanderTimer <= 0) {
+          kai.wanderTimer = 1.4 + Math.random() * 2.2;
+          kai.wanderAngle = Math.random() * Math.PI * 2;
+        }
+        kai.x += Math.cos(kai.wanderAngle) * 22 * dt;
+        kai.y += Math.sin(kai.wanderAngle) * 22 * dt;
+        kai.setAnimation('idle', 0);
+        kai.isJumping = false;
+
+        // occasional autonomous Kai actions
+        if (kai.reactCooldown === 0 && Math.random() < 0.008) {
+          const roll = Math.random();
+          if (roll < 0.4) {
+            // Kai jumps randomly
+            kai.isJumping = true;
+            kai.jumpTimer = 0;
+            kai.jumpDuration = 0.5;
+            kai.setAnimation('jump', 0.5, 'idle');
+          } else if (roll < 0.7) {
+            // Kai mines
+            kai.setAnimation('mine', 0.7, 'idle');
+          } else {
+            // Kai victory dance
+            kai.setAnimation('victory', 0.8, 'idle');
+          }
+          kai.reactCooldown = 1.5;
+        }
+      }
+
+      // Kai reacts to Lyra's jump
+      if (lyra.isJumping && kai.reactCooldown === 0 && Math.random() < 0.01) {
+        kai.isJumping = true;
+        kai.jumpTimer = 0;
+        kai.jumpDuration = 0.5;
+        kai.setAnimation('jump', 0.5, 'idle');
+        kai.reactCooldown = 1.0;
+      }
+
+      // Kai reacts to Lyra's hurt
+      if (lyra.anim === 'hurt' && kai.reactCooldown === 0) {
+        kai.setAnimation('hurt', 0.5, 'idle');
+        kai.reactCooldown = 1.0;
+      }
+
+      // Kai reacts to Lyra's victory
+      if (lyra.anim === 'victory' && kai.reactCooldown === 0 && Math.random() < 0.04) {
+        kai.setAnimation('victory', 0.8, 'idle');
+        kai.reactCooldown = 1.2;
+      }
+
+      // clamp
+      kai.x = Math.max(BOUNDS.minX - 20, Math.min(BOUNDS.maxX + 20, kai.x));
+      kai.y = Math.max(BOUNDS.minY - 20, Math.min(BOUNDS.maxY + 20, kai.y));
+    }
+
+    // ---------- BACKGROUND ----------
+    function drawSpaceBackground() {
+      const grad = ctx.createRadialGradient(300, 200, 100, 700, 400, 800);
+      grad.addColorStop(0, '#0b1424');
+      grad.addColorStop(0.8, '#03070e');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W, H);
+
+      // stars
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      for (let i = 0; i < 200; i++) {
+        const x = (i * 131) % W;
+        const y = (i * 279) % H;
+        const size = (i % 3) * 0.7 + 0.6;
+        ctx.globalAlpha = 0.4 + Math.sin(i * 0.5 + Date.now() * 0.001) * 0.3;
+        ctx.beginPath();
+        ctx.arc(x, y, size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      // nebula
+      ctx.fillStyle = '#1b2e4b30';
+      ctx.beginPath();
+      ctx.ellipse(750, 120, 300, 150, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3b1e4b30';
+      ctx.beginPath();
+      ctx.ellipse(100, 480, 400, 180, -0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // grid
+      ctx.strokeStyle = '#2e4e6640';
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i <= W; i += 60) {
+        ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke();
+      }
+      for (let i = 0; i <= H; i += 60) {
+        ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke();
+      }
+    }
+
+    // ---------- DRAW HUD ----------
+    function drawHUD() {
+      ctx.save();
+      ctx.font = 'bold 14px "Segoe UI", monospace';
+      ctx.fillStyle = '#b0d6ff';
+      ctx.shadowColor = '#0a3350';
+      ctx.shadowBlur = 6;
+      ctx.fillText('WASD/arrows · SHIFT run · SPACE jump · E mine · H hurt · V victory', 30, H - 28);
+      ctx.font = 'bold 13px "Segoe UI", monospace';
+      ctx.fillStyle = '#9fd0ff';
+      ctx.fillText(`LYRA: ${lyra.anim}   |   KAI: ${kai.anim}   |   COMBO: ${mineCombo}/5`, 30, 40);
+      ctx.restore();
+    }
+
+    // ---------- POPUPS ----------
+    function drawPopups() {
+      ctx.save();
+      ctx.font = 'bold 24px "Segoe UI", monospace';
+      ctx.textAlign = 'center';
+      for (const p of popups) {
+        const alpha = Math.min(1, p.life / 0.4);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 8;
+        ctx.fillText(p.text, p.x, p.y);
+      }
+      ctx.restore();
+    }
+
+    // ---------- MAIN LOOP ----------
+    function gameLoop(now) {
+      const dt = Math.min(0.05, (now - lastTime) / 1000 || 0.016);
+      lastTime = now;
+
+      if (lyra && kai) {
+        updatePlayer(dt);
+        updateNPC(dt);
+        lyra.update(dt);
+        kai.update(dt);
+        updateParticles(dt);
+        updatePopups(dt);
+      }
+
+      drawSpaceBackground();
+
+      if (lyra && kai) {
+        // depth sort
+        if (lyra.y < kai.y) { kai.draw(ctx); lyra.draw(ctx); }
+        else { lyra.draw(ctx); kai.draw(ctx); }
+      }
+
+      // particles
+      for (const p of particles) {
+        ctx.globalAlpha = Math.min(1, p.life / 0.4);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = '#ffaa00';
+        ctx.shadowBlur = 12;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+
+      drawPopups();
+      drawHUD();
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ---------- BOOT ----------
+    let loaded = 0;
+    function onAssetLoad() {
+      loaded++;
+      if (loaded === 2) boot();
+    }
+
+    lyraImg.onload = onAssetLoad;
+    kaiImg.onload = onAssetLoad;
+    lyraImg.onerror = () => { console.warn('Lyra sheet missing, using placeholder'); onAssetLoad(); };
+    kaiImg.onerror = () => { console.warn('Kai sheet missing, using placeholder'); onAssetLoad(); };
+    lyraImg.src = './characters/lyra_spritesheet.png';
+    kaiImg.src = './characters/kai_spritesheet.png';
+
+    function boot() {
+      initGame();
+      addKeyHandlers();
+      lastTime = performance.now();
+      requestAnimationFrame(gameLoop);
+    }
+  })();
+</script>
+</body>
+</html>

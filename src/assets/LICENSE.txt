@@ -1,0 +1,5 @@
+CC0 1.0 Universal - Public Domain Dedication
+You can copy, modify, distribute and use these assets, even commercially, without asking permission.
+Credit is appreciated but not required. (Change this file before publishing if you want other terms.)
+
+Made with Python code (Pillow). No image-generation model was used.

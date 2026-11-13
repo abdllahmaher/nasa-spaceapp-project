@@ -1,0 +1,92 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  width: min(1000px, 94vw);
+  margin: 0 auto;
+  padding: 32px 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: clamp(1rem, 2.2vw, 1.35rem);
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.app-tag {
+  font: 500 11px/1 ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e0919f;
+  border: 1px solid rgba(224, 145, 159, 0.35);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.game-frame {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #1b1020;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 30px 70px -30px rgba(0, 0, 0, 0.9),
+    0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+}
+
+.game-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+.game-badge {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffd9e0;
+  background: rgba(20, 10, 16, 0.55);
+  border: 1px solid rgba(255, 217, 224, 0.22);
+  border-radius: 999px;
+  padding: 7px 12px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: #b9a2ab;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  margin-right: 3px;
+  padding: 3px 6px;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, monospace;
+  text-align: center;
+  color: #f0d6dd;
+  background: #241726;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+}
