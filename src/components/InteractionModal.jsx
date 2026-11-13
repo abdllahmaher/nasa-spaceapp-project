@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Portrait from "./Portrait";
 import PixelIcon from "./PixelIcon";
 import { PORTRAITS } from "../data/portraits";
@@ -60,6 +60,8 @@ function CostPips({ cost }) {
 }
 
 export default function InteractionModal({ content, resources, onChoose, onGoto, onClose }) {
+  const [lineIndex, setLineIndex] = useState(0);
+  useEffect(() => setLineIndex(0), [content?.targetId, content?.title, content?.result]);
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === "Escape") onClose();
@@ -74,7 +76,10 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
       ? content.choices.find((choice) => choice.id === content.chosenId)
       : null;
   const resultText = content.result ?? resolved?.result ?? null;
-  const showChoices = content.choices && !resultText;
+  const lines = content.body ?? [];
+  const hasMoreLines = !resultText && lineIndex < lines.length - 1;
+  const dialogueFinished = resultText || lines.length === 0 || lineIndex >= lines.length - 1;
+  const showChoices = content.choices && !resultText && dialogueFinished;
 
   return (
     <div
@@ -96,11 +101,11 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
             {content.title}
           </h2>
 
-          {!resultText && (
-            <div className="vn-lines">
-              {content.body.map((line) => (
-                <p key={line}>{line}</p>
-              ))}
+          {!resultText && lines.length > 0 && (
+            <div className="vn-lines voice-chat-line" aria-live="polite">
+              <span className="voice-chat-indicator"><i /><i /><i /><i /></span>
+              <p>{lines[lineIndex]}</p>
+              <small>VOICE LINK · {lineIndex + 1}/{lines.length}</small>
             </div>
           )}
 
@@ -141,9 +146,14 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
 
           <div className="vn-actions">
             <span className="vn-hint">
-              {showChoices ? "Pick one!" : resultText ? "Nice work, Commander." : "What a view!"}
+              {showChoices ? "Your turn, Commander." : resultText ? "Nice work, Commander." : "Incoming crew transmission"}
             </span>
-            {content.goto && !resultText && (
+            {!resultText && !dialogueFinished && (
+              <button type="button" className="primary-button voice-next" onClick={() => setLineIndex((i) => Math.min(i + 1, lines.length - 1))}>
+                Next transmission →
+              </button>
+            )}
+            {content.goto && !resultText && dialogueFinished && (
               <button
                 type="button"
                 className="primary-button"
@@ -152,9 +162,11 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
                 {content.goto.label ?? "Show me"}
               </button>
             )}
-            <button type="button" className="ghost-button" onClick={onClose}>
-              {resultText ? "Yay!" : "Okay!"}
-            </button>
+            {dialogueFinished && !showChoices && (
+              <button type="button" className="ghost-button" onClick={onClose}>
+                {resultText ? "Yay!" : "Okay!"}
+              </button>
+            )}
           </div>
         </article>
       </div>

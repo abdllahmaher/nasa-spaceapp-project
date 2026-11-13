@@ -28,6 +28,14 @@ export function createCrewBehavior(clips, config = {}) {
       hidden = false;
     },
 
+    hide() {
+      hidden = true;
+      targetX = null;
+      wait = 0;
+      workLeft = 0;
+      clip = "idle";
+    },
+
     isVisible() {
       return !hidden;
     },

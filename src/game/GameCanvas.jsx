@@ -36,6 +36,8 @@ export default function GameCanvas({
   markers = {},
   cinematic = null,
   walkTo = null,
+  crewCommand = null,
+  onCrewCommandDone,
   onInteract,
   onIntroComplete,
   onCinematicDone,
@@ -49,6 +51,8 @@ export default function GameCanvas({
   const markersRef = useRef(markers);
   const cinematicRef = useRef(cinematic);
   const walkToRef = useRef(walkTo);
+  const crewCommandRef = useRef(crewCommand);
+  const onCrewCommandDoneRef = useRef(onCrewCommandDone);
   const onInteractRef = useRef(onInteract);
   const onIntroCompleteRef = useRef(onIntroComplete);
   const onCinematicDoneRef = useRef(onCinematicDone);
@@ -61,6 +65,8 @@ export default function GameCanvas({
     markersRef.current = markers;
     cinematicRef.current = cinematic;
     walkToRef.current = walkTo;
+    crewCommandRef.current = crewCommand;
+    onCrewCommandDoneRef.current = onCrewCommandDone;
     onInteractRef.current = onInteract;
     onIntroCompleteRef.current = onIntroComplete;
     onCinematicDoneRef.current = onCinematicDone;
@@ -71,6 +77,8 @@ export default function GameCanvas({
     markers,
     cinematic,
     walkTo,
+    crewCommand,
+    onCrewCommandDone,
     onInteract,
     onIntroComplete,
     onCinematicDone,
@@ -108,6 +116,10 @@ export default function GameCanvas({
     let task = null;
     let handledTask = 0;
     let handledWalk = 0;
+    let handledCrewCommand = 0;
+    let crewTransition = null;
+    let playerHidden = false;
+    const airlock = entities.find((entity) => entity.id === "airlock");
 
     if (startLandedRef.current) {
       // Resuming: the outpost is already standing and the crew are at work.
@@ -170,7 +182,7 @@ export default function GameCanvas({
       }
 
       // Layla stays in the lander until touchdown.
-      if (arrived) {
+      if (arrived && !playerHidden) {
         drawables.push({
           sortY: player.y,
           draw: () => drawPlayer(ctx, player, cameraLeft, spritesheet),
@@ -184,6 +196,13 @@ export default function GameCanvas({
       for (const copy of copies) {
         const targetId = copy.entity.interactive?.targetId;
         if (!targetId) continue;
+        // NPCs should never have HUD/status bars above their heads.
+        if (CREW_IDS.includes(copy.entity.id)) {
+          if (introDone && markersRef.current?.[targetId]) {
+            drawQuestMarker(ctx, copy, images, clock);
+          }
+          continue;
+        }
 
         const build = copy.entity.behavior?.getProgress?.();
         if (build !== undefined) {
@@ -221,6 +240,42 @@ export default function GameCanvas({
       if (debug) {
         drawDebugOverlay(ctx, copies, images, cameraLeft, period, player, entities.length);
       }
+      // Layla's nameplate is drawn in the same topmost pass as the crew labels.
+      if (arrived && !playerHidden) {
+        const laylaX = player.x - cameraLeft;
+        const laylaY = player.y - 82;
+        ctx.save();
+        ctx.font = 'bold 15px "Press Start 2P", monospace';
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "#171323";
+        ctx.fillStyle = "#fff2b8";
+        ctx.strokeText("LAYLA", laylaX, laylaY);
+        ctx.fillText("LAYLA", laylaX, laylaY);
+        ctx.restore();
+      }
+
+      // NPC nameplates are drawn in a final pass: always above world sprites.
+      for (const copy of copies) {
+        if (!CREW_IDS.includes(copy.entity.id)) continue;
+        if (copy.entity.behavior?.isVisible?.() === false) continue;
+        const label = ({ kai: "KAI", nova: "NOVA", rex: "REX" })[copy.entity.id] ?? copy.entity.id.toUpperCase();
+        const scale = Math.max(0.82, Math.min(1, copy.entity.y / 492));
+        const labelY = copy.entity.y - 78 * scale;
+        ctx.save();
+        ctx.font = `bold ${Math.round(15 * scale)}px "Press Start 2P", monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "#171323";
+        ctx.fillStyle = "#fff2b8";
+        ctx.strokeText(label, copy.screenX, labelY);
+        ctx.fillText(label, copy.screenX, labelY);
+        ctx.restore();
+      }
+
+
     };
 
     const startArrival = () => {
@@ -325,6 +380,105 @@ export default function GameCanvas({
       camera.update(dt, (actor.x + machine.x) * 0.5 * period);
     };
 
+    const updateCrewTransition = (dt) => {
+      const command = crewCommandRef.current;
+      if (!crewTransition && command && command.token !== handledCrewCommand) {
+        if (!airlock) {
+          handledCrewCommand = command.token;
+          onCrewCommandDoneRef.current?.(command.token);
+          return;
+        }
+        const targetX = airlock.x;
+        if (command.type === "sleep") {
+          crewTransition = { token: command.token, type: "sleep", targetX, elapsed: 0 };
+          player.auto = null;
+        } else if (command.type === "wake") {
+          crewTransition = { token: command.token, type: "wake", targetX, elapsed: 0 };
+          player.x = targetX * period - 58;
+          player.auto = null;
+          playerHidden = false;
+          for (const member of crew) {
+            member.x = targetX;
+            member.behavior?.show?.();
+            member.behavior?.walkTo?.(member.homeX ?? member.x);
+          }
+        }
+      }
+      if (!crewTransition) return;
+      const active = crewTransition;
+      active.elapsed = (active.elapsed ?? 0) + dt;
+
+      // Never leave the game trapped on the sleep/sunrise overlay if a
+      // character cannot reach its waypoint (e.g. a legacy save position).
+      if (active.elapsed >= 16) {
+        if (active.type === "sleep") {
+          for (const member of crew) {
+            member.x = active.targetX;
+            member.behavior?.hide?.();
+          }
+          player.x = active.targetX * period - 58;
+          player.action = "idle";
+          playerHidden = true;
+        } else {
+          for (const member of crew) {
+            member.behavior?.hide?.();
+            member.x = member.homeX ?? member.x;
+            member.behavior?.show?.();
+          }
+          player.x = WORLD.introExitX;
+          player.action = "idle";
+          playerHidden = false;
+        }
+        handledCrewCommand = active.token;
+        crewTransition = null;
+        onCrewCommandDoneRef.current?.(active.token);
+        camera.update(dt, player.x);
+        return;
+      }
+
+      const targetWorldX = active.targetX * period;
+      const walkPlayer = (destination) => {
+        const dx = destination - player.x;
+        if (Math.abs(dx) <= 3) {
+          player.x = destination;
+          player.action = "idle";
+          return true;
+        }
+        const step = Math.sign(dx) * Math.min(Math.abs(dx), 92 * dt);
+        player.x += step;
+        player.facing = Math.sign(dx);
+        player.action = "walk";
+        player.animTime += dt;
+        return false;
+      };
+      if (active.type === "sleep") {
+        for (const member of crew) {
+          if (!member.behavior?.isBusy?.() && Math.abs(member.x - active.targetX) > 0.0001) {
+            member.behavior?.walkTo?.(active.targetX);
+          }
+        }
+        const laylaDone = walkPlayer(targetWorldX - 58);
+        const crewDone = crew.every((member) => Math.abs(member.x - active.targetX) < 0.0001 && !member.behavior?.isBusy?.());
+        if (laylaDone && crewDone) {
+          crew.forEach((member) => member.behavior?.hide?.());
+          playerHidden = true;
+          handledCrewCommand = active.token;
+          crewTransition = null;
+          onCrewCommandDoneRef.current?.(active.token);
+        }
+      } else if (active.type === "wake") {
+        const laylaDone = walkPlayer(WORLD.introExitX);
+        const crewDone = crew.every((member) => !member.behavior?.isBusy?.());
+        if (laylaDone && crewDone) {
+          crew.forEach((member) => { member.x = member.homeX ?? member.x; });
+          handledCrewCommand = active.token;
+          crewTransition = null;
+          onCrewCommandDoneRef.current?.(active.token);
+        }
+      }
+      camera.update(dt, player.x);
+    };
+
     // ---------------------------------------------------------------- mouse
 
     const toWorld = (event) => {
@@ -341,6 +495,7 @@ export default function GameCanvas({
 
       let best = null;
       for (const entity of entities) {
+        if (!CREW_IDS.includes(entity.id)) continue;
         if (!isEntityInteractive(entity)) continue;
         if (entity.behavior?.isVisible?.() === false) continue;
 
@@ -369,6 +524,7 @@ export default function GameCanvas({
 
       player.auto = {
         x: worldX + side * offset,
+        y: entity.y,
         faceX: worldX,
         targetId: interaction?.targetId ?? null,
         entityId: entity.id,
@@ -386,7 +542,13 @@ export default function GameCanvas({
       }
 
       const point = toWorld(event);
-      if (point) queueWalkTo(null, point.worldX);
+      if (point) {
+        player.auto = {
+          x: point.worldX,
+          y: Math.max(WORLD.walkArea.minY, Math.min(WORLD.walkArea.maxY, point.sy)),
+          faceX: point.worldX,
+        };
+      }
     };
 
     const onMove = (event) => {
@@ -430,7 +592,8 @@ export default function GameCanvas({
         }
 
         updateTask(dt);
-        const focused = Boolean(task);
+        updateCrewTransition(dt);
+        const focused = Boolean(task || crewTransition);
 
         // HUD shortcuts (quest rows) ask Layla to walk somewhere.
         if (walkToRef.current && walkToRef.current.token !== handledWalk) {
@@ -444,7 +607,7 @@ export default function GameCanvas({
           if (target) queueWalkTo(target, nearestWorldX(target, period, player.x));
         }
 
-        if (inputEnabledRef.current) {
+        if (inputEnabledRef.current && !crewTransition) {
           updatePlayer(player, dt, input, entities, period);
 
           if (player.pendingInteraction) {

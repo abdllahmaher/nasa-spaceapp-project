@@ -8,7 +8,7 @@ const FALLBACK = {
   line: "Nova will clean the water filter. The greenhouse needs a drink too.",
 };
 
-export default function DayBreak({ report, onReplay }) {
+export default function DayBreak({ report, onBegin }) {
   const nextDay = report?.nextDay ?? FALLBACK;
 
   return (
@@ -27,8 +27,8 @@ export default function DayBreak({ report, onReplay }) {
           </h2>
 
           <div className="vn-lines">
-            <p>The sun is up. Sol 1 was a big success.</p>
-            <p>Today we make the water clean again.</p>
+            <p>The sun is up. The crew is ready for another day.</p>
+            <p>Let’s check the outpost and continue the mission.</p>
           </div>
 
           <div className="vn-weather">
@@ -39,9 +39,9 @@ export default function DayBreak({ report, onReplay }) {
           </div>
 
           <div className="vn-actions">
-            <span className="vn-hint">Sol 2 is coming next.</span>
-            <button type="button" className="primary-button" onClick={onReplay}>
-              Replay Sol 1
+            <span className="vn-hint">New Sol · Ready for duty</span>
+            <button type="button" className="primary-button" onClick={onBegin}>
+              Begin New Sol
             </button>
           </div>
         </article>

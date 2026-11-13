@@ -945,16 +945,18 @@
 .toast {
   position: absolute;
   left: 50%;
-  bottom: 66px;
+  top: 42%;
+  bottom: auto;
   z-index: 30;
   transform: translateX(-50%);
-  max-width: 80%;
-  padding: 10px 16px;
+  width: min(620px, 86%);
+  max-width: 86%;
+  padding: 16px 24px;
   border-radius: 10px;
   border: 3px solid rgba(157, 245, 214, 0.35);
   background: rgba(13, 28, 23, 0.94);
   color: #c9ffe9;
-  font: 800 10px/1.3 ui-monospace, SFMono-Regular, monospace;
+  font: 800 14px/1.4 ui-monospace, SFMono-Regular, monospace;
   letter-spacing: 0.05em;
   text-align: center;
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4);
@@ -965,7 +967,7 @@
 @keyframes toast-in {
   from {
     opacity: 0;
-    transform: translate(-50%, 6px);
+    transform: translate(-50%, -8px);
   }
   to {
     opacity: 1;
@@ -1255,3 +1257,183 @@ kbd {
     font-size: 9px;
   }
 }
+
+/* Mission feedback: larger, centered and safely above the lower HUD edge. */
+.toast {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  bottom: auto;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: max-content;
+  max-width: min(760px, 90%);
+  padding: 17px 24px;
+  border-width: 2px;
+  border-radius: 14px;
+  font-size: clamp(13px, 1.35vw, 17px);
+  line-height: 1.45;
+  letter-spacing: 0.025em;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+  transform: translateX(-50%);
+}
+
+.toast-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  color: #14211c;
+  background: #9df5d6;
+  font-size: 19px;
+  font-weight: 900;
+}
+
+.toast-danger {
+  color: #fff0ee;
+  background: rgba(74, 17, 24, 0.97);
+  border-color: rgba(255, 105, 105, 0.9);
+}
+
+.toast-danger .toast-mark {
+  color: white;
+  background: #ef5555;
+}
+
+.sleep-prompt {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 2px solid rgba(157, 245, 214, 0.5);
+  border-radius: 12px;
+  background: rgba(10, 29, 28, 0.96);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.sleep-copy { display: grid; gap: 3px; }
+.sleep-copy strong { color: #b8ffe6; font-size: 15px; }
+.sleep-copy span { color: #d2e8df; font-size: 11px; }
+
+.weather-fx {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(110deg, rgba(35, 44, 66, 0.04), rgba(91, 105, 128, 0.13));
+}
+.weather-light { opacity: 0.09; }
+.weather-storm { opacity: 0.18; }
+.weather-particle {
+  position: absolute;
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(225, 207, 171, 0.72);
+  filter: blur(1px);
+}
+.weather-dust {
+  background: linear-gradient(110deg, rgba(132, 94, 55, 0.025), rgba(171, 133, 83, 0.075));
+}
+.weather-particle-dust {
+  width: 7px;
+  height: 4px;
+  background: rgba(199, 164, 112, 0.58);
+}
+.weather-haze {
+  background: linear-gradient(180deg, rgba(196, 210, 220, 0.055), rgba(196, 210, 220, 0.015));
+}
+.weather-particle-haze {
+  width: 18px;
+  height: 8px;
+  background: rgba(209, 222, 229, 0.24);
+  filter: blur(5px);
+}
+
+.hazard-stack {
+  position: absolute;
+  z-index: 25;
+  top: 88px;
+  right: 16px;
+  display: grid;
+  gap: 9px;
+  width: min(370px, 42%);
+  pointer-events: none;
+}
+.hazard-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 14px;
+  border: 2px solid rgba(255, 184, 87, 0.9);
+  border-radius: 11px;
+  color: #fff3dc;
+  background: rgba(64, 38, 12, 0.96);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.hazard-critical {
+  border-color: rgba(255, 93, 93, 0.95);
+  background: rgba(75, 15, 22, 0.97);
+}
+.hazard-symbol {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  color: #2c1806;
+  background: #ffc45e;
+  font-size: 19px;
+  font-weight: 900;
+}
+.hazard-critical .hazard-symbol { color: white; background: #ef5555; }
+.hazard-card strong { display: block; font-size: 12px; letter-spacing: 0.06em; }
+.hazard-card p { margin: 4px 0 0; color: #f6d9cb; font-size: 11px; line-height: 1.4; }
+
+.day-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+}
+.night-transition { color: #e2eaff; background: rgba(4, 8, 24, 0.94); }
+.morning-transition { color: #fff4df; background: rgba(255, 163, 78, 0.18); }
+.transition-text { padding: 24px; text-shadow: 0 3px 16px rgba(0, 0, 0, 0.65); }
+.transition-text span { font-size: 11px; letter-spacing: 0.32em; opacity: 0.75; }
+.transition-text h2 { margin: 12px 0; font-size: clamp(27px, 4vw, 44px); }
+.transition-text p { margin: 0; font-size: 14px; opacity: 0.88; }
+
+@media (max-width: 680px) {
+  .toast { top: 10px; max-width: 94%; padding: 12px 15px; font-size: 12px; }
+  .hazard-stack { top: 72px; right: 8px; width: min(300px, 58%); }
+  .hazard-card { padding: 8px; gap: 7px; }
+  .hazard-card strong { font-size: 10px; }
+  .hazard-card p { font-size: 9px; }
+}
+
+
+/* Step-by-step crew radio dialogue */
+.voice-chat-line { position: relative; min-height: 112px; padding: 18px 20px 24px; border: 2px solid rgba(126,224,255,.42); background: rgba(9,20,35,.82); }
+.voice-chat-line p { font-size: clamp(15px, 1.45vw, 20px); line-height: 1.7; }
+.voice-chat-line small { display:block; margin-top:12px; color:#83dff5; font: 9px "Press Start 2P", monospace; letter-spacing:1px; }
+.voice-chat-indicator { display:inline-flex; align-items:center; gap:3px; height:15px; margin-bottom:10px; }
+.voice-chat-indicator i { display:block; width:3px; height:7px; background:#83dff5; animation: voicePulse .65s ease-in-out infinite alternate; }
+.voice-chat-indicator i:nth-child(2) { animation-delay:.15s; height:13px; }
+.voice-chat-indicator i:nth-child(3) { animation-delay:.3s; height:9px; }
+.voice-chat-indicator i:nth-child(4) { animation-delay:.45s; height:12px; }
+.voice-next { min-width:190px; }
+@keyframes voicePulse { to { transform:scaleY(.35); opacity:.55; } }
+
+.weather-storm { background: linear-gradient(105deg, rgba(94,69,46,.12), rgba(154,112,67,.2)); }
+.weather-particle-storm { width: 12px; height: 5px; border-radius: 2px; background: rgba(188,151,103,.66); filter: blur(1.2px); }

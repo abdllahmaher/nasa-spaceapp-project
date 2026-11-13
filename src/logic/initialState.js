@@ -6,7 +6,7 @@
  */
 export function createInitialState() {
   return {
-    version: 1,
+    version: 2,
     day: 1,
     resources: {
       storedPower: 100,

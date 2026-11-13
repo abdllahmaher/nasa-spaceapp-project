@@ -43,3 +43,11 @@ export const JEZERO_SITE = {
   sourceId: "marsTrek",
   note: "Site context from NASA Mars Trek's MRO CTX Jezero mosaic.",
 };
+
+// Atmospheric effects in the game are based on documented Jezero observations.
+// Mars has no liquid-rain weather; use dust lifting, dust devils and water-ice haze/clouds.
+export const JEZERO_WEATHER_SOURCES = [
+  { title: "NASA: Perseverance Studies the Wild Winds of Jezero Crater", url: "https://www.nasa.gov/missions/mars-2020-perseverance/perseverance-rover/nasas-perseverance-studies-the-wild-winds-of-jezero-crater/" },
+  { title: "NASA: Perseverance Pays Off When Studying the Martian Atmosphere", url: "https://science.nasa.gov/blog/perseverance-pays-off-when-studying-the-martian-atmosphere/" },
+  { title: "NASA/JPL: Dust Devil Observations", url: "https://www.nasa.gov/missions/mars-2020-perseverance/perseverance-rover/perseverance-rover-witnesses-one-martian-dust-devil-eating-another/" },
+];

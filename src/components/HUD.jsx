@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import PixelIcon from "./PixelIcon";
 
 const METERS = [
@@ -34,6 +35,8 @@ export default function HUD({
   onEndDay,
   onTrack,
   canEndDay,
+  showSleepPrompt,
+  constructionOnly = false,
 }) {
   return (
     <div className="hud" aria-label="Mission status">
@@ -77,7 +80,7 @@ export default function HUD({
       </section>
 
       <div className="hud-right">
-        <section className="hud-card hud-meters">
+        {!constructionOnly && <section className="hud-card hud-meters">
           {METERS.map((meter) => (
             <Meter
               key={meter.key}
@@ -97,9 +100,10 @@ export default function HUD({
               ))}
             </span>
           </div>
-        </section>
+        </section>}
 
-        <div className="hud-actions">
+        {showSleepPrompt && <motion.div className="hud-actions sleep-prompt" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 360, damping: 26 }}>
+          <div className="sleep-copy"><strong>Time to sleep</strong><span>All primary objectives complete.</span></div>
           <button
             type="button"
             className="sleep-button"
@@ -109,10 +113,8 @@ export default function HUD({
             <PixelIcon name="moon" size={12} />
             End Day
           </button>
-          <p className="hud-hint">
-            {canEndDay ? "All done! Time to sleep." : "Finish the list to sleep."}
-          </p>
-        </div>
+          <p className="hud-hint">End this Sol and send the crew to the Airlock.</p>
+        </motion.div>}
       </div>
     </div>
   );

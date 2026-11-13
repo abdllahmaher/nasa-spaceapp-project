@@ -19,38 +19,28 @@ export function endDay(state) {
   const before = { ...state.resources };
   const next = structuredClone(state);
 
-  next.resources.storedPower = applyDelta(next.resources, "storedPower", -4);
-  next.resources.water = applyDelta(next.resources, "water", -3);
-  next.resources.food = applyDelta(next.resources, "food", -2);
-  next.resources.lifeSupportCondition = applyDelta(
-    next.resources,
-    "lifeSupportCondition",
-    -1,
-  );
-
-  const powerChoice = next.decisions.power_junction;
-
-  if (powerChoice === "repair") {
-    next.resources.habitatSafety = applyDelta(next.resources, "habitatSafety", 1);
-    addFlag(next, "powerBusStable");
-  } else if (powerChoice === "postpone") {
-    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -8);
-    next.resources.habitatSafety = applyDelta(next.resources, "habitatSafety", -3);
-    addFlag(next, "powerRisk");
-  } else if (powerChoice === "diagnose") {
-    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -3);
-    addFlag(next, "repairPlanned");
-  } else {
-    next.resources.powerCondition = applyDelta(next.resources, "powerCondition", -6);
-    addFlag(next, "powerRisk");
+  // Sol 1 is construction and commissioning only: no resource consumption.
+  if (state.day > 1) {
+    next.resources.storedPower = applyDelta(next.resources, "storedPower", -4);
+    next.resources.water = applyDelta(next.resources, "water", -3);
+    next.resources.food = applyDelta(next.resources, "food", -2);
+    next.resources.lifeSupportCondition = applyDelta(next.resources, "lifeSupportCondition", -1);
   }
+
+  // The construction-only first Sol has no resource decisions or penalties.
+  // Later Sols resolve their own mission outcomes without replaying Sol 1 choices.
 
   for (const member of Object.values(next.crew)) {
     member.fatigue = Math.min(100, member.fatigue + 4);
   }
 
   next.day = state.day + 1;
-  next.completedEvents = [...next.completedEvents, "day01"];
+  next.version = 2;
+  // Interaction progress and choices belong to one Sol only. Keeping these
+  // arrays caused the next Sol to inherit completed objectives from yesterday.
+  next.seen = [];
+  next.decisions = {};
+  next.completedEvents = [...new Set([...next.completedEvents, `day${String(state.day).padStart(2, "0")}`])];
 
   const rows = [
     { key: "storedPower", label: "Power", icon: "bolt", max: 100 },
@@ -60,7 +50,7 @@ export function endDay(state) {
 
   const report = {
     day: state.day,
-    title: "Sol 1 done!",
+    title: `Sol ${state.day} done!`,
     headline: POWER_NOTES[powerChoice] ?? "The outpost made it through the night.",
     changes: rows.map((row) => ({
       ...row,
@@ -71,11 +61,11 @@ export function endDay(state) {
     note: "Everyone is safe in the dome.",
     nextDay: {
       icon: "drop",
-      kicker: "SOL 2",
-      title: "Water day",
-      line: "Nova will clean the water filter. The greenhouse needs a drink too.",
+      kicker: `SOL ${next.day}`,
+      title: ({2:"Water and habitat checks",3:"Dust and power watch",4:"Morning sky and habitat",5:"Dust observation window"})[next.day] ?? `Science watch · Sol ${next.day}`,
+      line: "A new set of crew check-ins and objectives is ready for the next Sol.",
     },
-    source: "Space weather: NASA DONKI (real data).",
+    source: "NASA Mars weather archives are historical observations, not a forecast for Jezero.",
   };
 
   return {
