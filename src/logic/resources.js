@@ -32,23 +32,32 @@ const COST_LABELS = {
   spareParts: ["spare part", "spare parts"],
 };
 
+/** Saves and older builds can hold strings or `null`; coerce before any math. */
+function asNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
 export function clampResource(key, value) {
-  if (PERCENT_RESOURCES.has(key)) return Math.min(100, Math.max(0, value));
-  return Math.max(0, value);
+  const number = asNumber(value);
+  if (PERCENT_RESOURCES.has(key)) return Math.min(100, Math.max(0, number));
+  return Math.max(0, number);
 }
 
 export function applyDelta(resources, key, delta) {
-  return clampResource(key, (resources[key] ?? 0) + delta);
+  return clampResource(key, asNumber(resources?.[key]) + asNumber(delta));
 }
 
 export function canAfford(resources, cost = {}) {
-  return Object.entries(cost).every(([key, amount]) => (resources[key] ?? 0) >= amount);
+  return Object.entries(cost).every(
+    ([key, amount]) => asNumber(resources?.[key]) >= asNumber(amount),
+  );
 }
 
 export function payCost(resources, cost = {}) {
   const next = { ...resources };
   for (const [key, amount] of Object.entries(cost)) {
-    next[key] = clampResource(key, (next[key] ?? 0) - amount);
+    next[key] = clampResource(key, asNumber(next[key]) - asNumber(amount));
   }
   return next;
 }
@@ -56,7 +65,7 @@ export function payCost(resources, cost = {}) {
 export function applyEffects(resources, effects = {}) {
   const next = { ...resources };
   for (const [key, amount] of Object.entries(effects)) {
-    next[key] = clampResource(key, (next[key] ?? 0) + amount);
+    next[key] = clampResource(key, asNumber(next[key]) + asNumber(amount));
   }
   return next;
 }

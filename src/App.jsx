@@ -9,6 +9,8 @@ import DayBreak from "./components/DayBreak";
 import Toast from "./components/Toast";
 import DroneCompanion from "./components/DroneCompanion";
 import DronePanel from "./components/DronePanel";
+import GuideTour from "./components/GuideTour";
+import WeatherLayer from "./components/WeatherLayer";
 import { createInitialState } from "./logic/initialState";
 import { applyChoice, markSeen } from "./logic/choices";
 import { endDay } from "./logic/dailyCycle";
@@ -18,12 +20,14 @@ import { getDay, resolveDay } from "./story/days";
 import {
   DRONE_BARS,
   DRONE_DAY_DONE,
-  DRONE_GREET,
   DRONE_MEET,
   decisionNode,
+  droneGreet,
   morningNode,
+  nextTaskNode,
   warningNode,
 } from "./data/drone/script";
+import { ACTIVE_SITE, COMMANDER, PLAYER_NAME } from "./logic/profile";
 import {
   applyDecision,
   dayComplete,
@@ -32,6 +36,7 @@ import {
   groupComplete,
   markAlertsSeen,
   newAlerts,
+  nextGuidance,
   pendingDecision,
   setTutorialStep,
   tutorialStep,
@@ -41,9 +46,13 @@ import "./App.css";
 const SAVED_MISSION = loadGame();
 const MEET_GROUP = "Meet the crew";
 
+const list = (value) => (Array.isArray(value) ? value : []);
+
 export default function App() {
   const [state, setState] = useState(() => {
-    if (!SAVED_MISSION) return createInitialState();
+    // Normalize the fresh state too: one code path means the drone, missions
+    // and resource helpers always receive the same shape.
+    if (!SAVED_MISSION) return normalizeState(createInitialState());
     // One-time migration for older saves: Sol 1 is now construction-only,
     // and every Sol starts with a fresh set of crew check-ins.
     const legacy = (SAVED_MISSION.version ?? 1) < 3;
@@ -66,6 +75,8 @@ export default function App() {
   const [toastKind, setToastKind] = useState("success");
   const [crewCommand, setCrewCommand] = useState(null);
   const [droneOpen, setDroneOpen] = useState(false);
+  const [guideTarget, setGuideTarget] = useState(null);
+  const [worldGuideRect, setWorldGuideRect] = useState(null);
   const crewCommandStateRef = useRef(crewCommand);
   useEffect(() => { crewCommandStateRef.current = crewCommand; }, [crewCommand]);
   const crewCommandToken = useRef(0);
@@ -146,6 +157,8 @@ export default function App() {
   const openDroneNode = useCallback((node) => {
     if (!node) return;
     setDroneOpen(false);
+    setGuideTarget(null);
+    setWorldGuideRect(null);
     setActive({ ...node, targetId: "drone", chosenId: null });
     setPhase("interaction");
   }, []);
@@ -154,6 +167,29 @@ export default function App() {
     setState(next);
     saveGame(next);
   }, []);
+
+  /** The spotlight tour asks the world renderer to focus and measure a crew member. */
+  const requestGuideTarget = useCallback((entityId) => {
+    setGuideTarget(entityId);
+    if (!entityId) setWorldGuideRect(null);
+  }, []);
+
+  const handleGuideRect = useCallback((rect) => {
+    setWorldGuideRect(rect);
+  }, []);
+
+  /** Finish a spotlight tour: apply its tutorial step, then return to play. */
+  const handleGuideFinish = useCallback(() => {
+    const choice = active?.choices?.[0];
+    if (choice?.tutorial) {
+      commit(setTutorialStep(stateRef.current, choice.tutorial));
+    }
+    setGuideTarget(null);
+    setWorldGuideRect(null);
+    setActive(null);
+    setPhase("playing");
+    if (choice?.toast) showToast(choice.toast);
+  }, [active, commit, showToast]);
 
   /* ------------------------------------------------------- PIP's beats
    *
@@ -168,7 +204,7 @@ export default function App() {
     const step = tutorialStep(state);
 
     if (state.day === 1 && step === "greet") {
-      openDroneNode(DRONE_GREET);
+      openDroneNode(droneGreet(PLAYER_NAME));
       return;
     }
 
@@ -207,6 +243,17 @@ export default function App() {
     if (fresh.length) {
       commit(markAlertsSeen(state, fresh));
       openDroneNode(warningNode(fresh));
+      return;
+    }
+
+    // PIP always names the next open task. Keying on the whole open set means
+    // every completion (in any order) earns one guidance beat, and closing the
+    // bubble does not make it loop. Last, so a warning or decision is never
+    // hidden behind a task prompt.
+    const guide = nextGuidance(state, story);
+    if (guide && state.drone?.guidedFor !== guide.key) {
+      commit({ ...state, drone: { ...state.drone, guidedFor: guide.key } });
+      openDroneNode(nextTaskNode(story, guide.task, guide.open));
     }
   }, [phase, droneOpen, state, story, decision, tasksDone, openDroneNode, commit]);
 
@@ -218,10 +265,17 @@ export default function App() {
       const next = markSeen(state, request.targetId);
       if (next !== state) commit(next);
 
+      // A finished subtask stays finished even if its choice was recorded on a
+      // branch node (the "Why?" path). Fall back to the completed choice so the
+      // bubble shows the result instead of charging for the same work again.
+      const completedChoice = list(content.choices).find(
+        (choice) => choice.complete && list(state.doneSubtasks).includes(choice.complete),
+      );
+
       setActive({
         ...content,
         targetId: request.targetId,
-        chosenId: state.decisions[request.targetId] ?? null,
+        chosenId: state.decisions?.[request.targetId] ?? completedChoice?.id ?? null,
       });
       setPhase("interaction");
     },
@@ -229,6 +283,27 @@ export default function App() {
   );
 
   const handleChoose = (choice) => {
+    // Guidance buttons close the bubble and either walk Layla to the task or
+    // open the full task list.
+    if (choice.action === "track") {
+      setActive(null);
+      setPhase("playing");
+      if (choice.targetId) {
+        walkToken.current += 1;
+        setWalkTo({ token: walkToken.current, targetId: choice.targetId });
+      }
+      if (choice.toast) showToast(choice.toast);
+      return;
+    }
+
+    if (choice.action === "panel") {
+      setActive(null);
+      setPhase("playing");
+      setDroneOpen(true);
+      if (choice.toast) showToast(choice.toast);
+      return;
+    }
+
     // The drone's own buttons: sleep, and the day's decision.
     if (choice.action === "sleep") {
       setActive(null);
@@ -315,6 +390,8 @@ export default function App() {
   }, [showToast]);
 
   const handleCloseInteraction = () => {
+    setGuideTarget(null);
+    setWorldGuideRect(null);
     setActive(null);
     setPhase("playing");
   };
@@ -370,15 +447,18 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <div className="app" data-map={ACTIVE_SITE.id}>
       <header className="app-header">
         <div className="app-brand">
-          <p className="app-kicker">Junior Astronaut Mission Trainer</p>
+          <p className="app-kicker">
+            {PLAYER_NAME ? COMMANDER : "Junior Astronaut Mission Trainer"}
+          </p>
           <h1>Mars Outpost</h1>
         </div>
         <div className="app-header-right">
           <span className="app-tag">
-            Sol {phase === "report" ? (report?.day ?? state.day) : state.day} · Jezero
+            Sol {phase === "report" ? (report?.day ?? state.day) : state.day} ·{" "}
+            {ACTIVE_SITE.short}
           </span>
           <button type="button" className="text-button" onClick={handleReset}>
             Reset
@@ -397,6 +477,8 @@ export default function App() {
           cinematic={cinematic}
           walkTo={walkTo}
           crewCommand={crewCommand}
+          guideTargetId={guideTarget}
+          onGuideRect={handleGuideRect}
           onCrewCommandDone={handleCrewCommandDone}
           onInteract={handleInteract}
           onIntroComplete={handleIntroComplete}
@@ -409,12 +491,16 @@ export default function App() {
 
         {["playing", "interaction", "cinematic"].includes(phase) && (
           <>
-            <DroneCompanion
-              mode={droneSpeaking ? "talk" : "dock"}
-              alert={alerts.some((alert) => alert.level === "critical")}
-              open={droneOpen}
-              onClick={toggleDrone}
-            />
+            {!active?.guide && (
+              <DroneCompanion
+                mode={droneSpeaking ? "talk" : "dock"}
+                alert={alerts.length > 0}
+                alertInfo={alerts[0] ?? null}
+                alertCount={alerts.length}
+                open={droneOpen}
+                onClick={toggleDrone}
+              />
+            )}
             <AnimatePresence>
               {droneOpen && (
                 <DronePanel
@@ -428,6 +514,7 @@ export default function App() {
                   decision={decision}
                   onTrack={handleTrack}
                   onAnswer={() => openDroneNode(decisionNode(story))}
+                  onAlert={() => openDroneNode(warningNode(alerts))}
                   onSleep={handleEndDay}
                   onClose={() => setDroneOpen(false)}
                 />
@@ -448,13 +535,22 @@ export default function App() {
         )}
 
         {phase === "interaction" && active && (
-          <InteractionModal
-            content={active}
-            resources={state.resources}
-            onChoose={handleChoose}
-            onGoto={handleGoto}
-            onClose={handleCloseInteraction}
-          />
+          active.guide ? (
+            <GuideTour
+              node={active}
+              worldRect={worldGuideRect}
+              onRequestWorld={requestGuideTarget}
+              onFinish={handleGuideFinish}
+            />
+          ) : (
+            <InteractionModal
+              content={active}
+              resources={state.resources}
+              onChoose={handleChoose}
+              onGoto={handleGoto}
+              onClose={handleCloseInteraction}
+            />
+          )
         )}
 
         {phase === "report" && report && (
@@ -465,27 +561,7 @@ export default function App() {
 
         <AnimatePresence>
           {weatherLevel !== "clear" && ["playing", "interaction", "cinematic"].includes(phase) && (
-            <motion.div
-              className={`weather-fx weather-${weatherLevel}`}
-              aria-hidden="true"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: weatherLevel === "storm" ? 0.19 : weatherLevel === "dust" ? 0.12 : 0.07 }}
-              exit={{ opacity: 0 }}
-            >
-              {Array.from({ length: weatherLevel === "storm" ? 13 : weatherLevel === "dust" ? 7 : 4 }, (_, index) => (
-                <motion.span
-                  key={index}
-                  className={`weather-particle weather-particle-${weatherLevel}`}
-                  style={{ left: `${7 + index * 14}%`, top: `${18 + (index * 13) % 55}%` }}
-                  animate={{
-                    x: weatherLevel === "storm" ? [0, -55, -115] : weatherLevel === "dust" ? [0, -30, -65] : [0, -8, -16],
-                    y: weatherLevel === "storm" ? [0, 12, -6] : weatherLevel === "dust" ? [0, 8, -3] : [0, -5, -10],
-                    opacity: [0, 0.55, 0],
-                  }}
-                  transition={{ duration: weatherLevel === "storm" ? 4.5 + index % 3 : weatherLevel === "dust" ? 7 + index % 3 : 10 + index, repeat: Infinity, delay: index * 0.35, ease: "linear" }}
-                />
-              ))}
-            </motion.div>
+            <WeatherLayer key={weatherLevel} level={weatherLevel} />
           )}
         </AnimatePresence>
 

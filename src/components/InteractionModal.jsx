@@ -3,6 +3,7 @@ import Portrait from "./Portrait";
 import PixelIcon from "./PixelIcon";
 import { PORTRAITS } from "../data/portraits";
 import { canAfford } from "../logic/resources";
+import { COMMANDER } from "../logic/profile";
 
 const COST_ICONS = {
   spareParts: "wrench",
@@ -146,7 +147,11 @@ export default function InteractionModal({ content, resources, onChoose, onGoto,
 
           <div className="vn-actions">
             <span className="vn-hint">
-              {showChoices ? "Your turn, Commander." : resultText ? "Nice work, Commander." : "Incoming crew transmission"}
+              {showChoices
+                ? `Your turn, ${COMMANDER}.`
+                : resultText
+                  ? `Nice work, ${COMMANDER}.`
+                  : "Incoming crew transmission"}
             </span>
             {!resultText && !dialogueFinished && (
               <button type="button" className="primary-button voice-next" onClick={() => setLineIndex((i) => Math.min(i + 1, lines.length - 1))}>

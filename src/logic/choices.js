@@ -1,9 +1,11 @@
 import { applyEffects, canAfford, formatCost, payCost } from "./resources";
-import { completeSubtask } from "./missions";
+import { completeSubtask, isSubtaskDone } from "./missions";
 
-function unique(list) {
-  return [...new Set(list)];
+function unique(values) {
+  return [...new Set(values)];
 }
+
+const list = (value) => (Array.isArray(value) ? value : []);
 
 /** Record that the commander has seen an interaction. */
 export function markSeen(state, targetId) {
@@ -20,16 +22,41 @@ export function markSeen(state, targetId) {
  * mission complete on its own — it asks the mission system to do it.
  */
 export function applyChoice(state, interaction, choice, options = {}) {
-  if (!canAfford(state.resources, choice.cost)) {
+  const subtasks = list(options.subtasks);
+  const subtask = choice.complete
+    ? subtasks.find((entry) => entry.id === choice.complete)
+    : null;
+
+  // Reopening a finished task (including through the "Why?" branch) must not
+  // charge the player or apply the same effects twice.
+  if (subtask && isSubtaskDone(state, subtask)) {
+    return {
+      ok: true,
+      state,
+      result: choice.result ?? "Already done.",
+      toast: choice.toast ?? `${interaction.title}: already done`,
+      scene: null,
+      next: null,
+    };
+  }
+
+  // A choice can pay its own price and a subtask price (Sol 4's mast). Both
+  // are checked up front, so a task can never be completed for free.
+  const cost = { ...(choice.cost ?? {}) };
+  for (const [key, amount] of Object.entries(subtask?.cost ?? {})) {
+    cost[key] = (cost[key] ?? 0) + amount;
+  }
+
+  if (!canAfford(state.resources, cost)) {
     return {
       ok: false,
-      message: `Not enough resources. Required: ${formatCost(choice.cost)}.`,
+      message: `Not enough resources. Required: ${formatCost(cost)}.`,
     };
   }
 
   let next = structuredClone(state);
 
-  next.resources = payCost(next.resources, choice.cost);
+  next.resources = payCost(next.resources, cost);
   next.resources = applyEffects(next.resources, choice.effects);
 
   if (choice.fatigue) {
@@ -41,21 +68,25 @@ export function applyChoice(state, interaction, choice, options = {}) {
   }
 
   const removed = new Set(choice.removeFlags ?? []);
-  next.flags = unique([...next.flags, ...(choice.setFlags ?? [])]).filter(
+  next.flags = unique([...list(next.flags), ...list(choice.setFlags)]).filter(
     (flag) => !removed.has(flag),
   );
 
-  next.decisions = { ...next.decisions, [interaction.targetId]: choice.id };
-  next.seen = unique([...next.seen, interaction.targetId]);
+  next.decisions = { ...(next.decisions ?? {}), [interaction.targetId]: choice.id };
+  // A branch node can answer for the crew member's own bubble, so record the
+  // choice under both ids. Reopening the main node then shows the result.
+  if (choice.resultNode) next.decisions[choice.resultNode] = choice.id;
+  next.seen = unique([...list(next.seen), interaction.targetId]);
 
   // A choice may clear a persistent problem directly.
   if (choice.clears) {
-    next.eventHistory = unique([...next.eventHistory, ...choice.clears]);
+    next.eventHistory = unique([...list(next.eventHistory), ...list(choice.clears)]);
   }
 
   // The mission system owns completion, including the station it commissions.
+  // Costs were already paid above, so it must not charge them again.
   if (choice.complete) {
-    next = completeSubtask(next, choice.complete, options.subtasks ?? []);
+    next = completeSubtask(next, choice.complete, subtasks, { applyCost: false });
   }
 
   return {

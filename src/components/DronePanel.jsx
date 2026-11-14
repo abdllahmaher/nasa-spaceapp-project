@@ -1,4 +1,5 @@
 import PixelIcon from "./PixelIcon";
+import droneSprite from "../assets/props/drone.png";
 
 /**
  * PIP's panel. It replaces the old HUD quest card: the drone owns the task list,
@@ -14,6 +15,7 @@ export default function DronePanel({
   decision,
   onTrack,
   onAnswer,
+  onAlert,
   onSleep,
   onClose,
 }) {
@@ -22,11 +24,22 @@ export default function DronePanel({
     (sum, group) => sum + group.tasks.filter((task) => task.status === "done").length,
     0,
   );
+  // The first task the player can actually start right now. PIP keeps it at
+  // the top so the panel always answers "what do I do next?".
+  let next = null;
+  for (const group of groups) {
+    const task = group.tasks.find((entry) => entry.status === "open");
+    if (task) {
+      next = { ...task, groupName: group.name };
+      break;
+    }
+  }
 
   return (
     <aside className="drone-panel" aria-label="PIP drone panel">
       <header className="drone-panel-head">
-        <div>
+        <img className="drone-panel-sprite" src={droneSprite} alt="" aria-hidden="true" />
+        <div className="drone-panel-heading">
           <p className="drone-panel-kicker">PIP · Outpost Drone</p>
           <h2>{mission?.title ?? `Sol ${day}`}</h2>
         </div>
@@ -46,11 +59,50 @@ export default function DronePanel({
         </span>
       </div>
 
+      {alerts.length > 0 && (
+        <button
+          type="button"
+          className={`drone-alert-banner drone-alert-${alerts[0].level}`}
+          onClick={onAlert}
+        >
+          <span className="drone-alert-siren" aria-hidden="true" />
+          <span className="drone-alert-banner-copy">
+            <span className="drone-alert-banner-kicker">
+              {alerts[0].kind === "forecast"
+                ? "INCOMING · FORECAST"
+                : alerts[0].level === "critical"
+                  ? "CRITICAL ALERT"
+                  : "PIP ALERT"}
+            </span>
+            <strong>{alerts[0].title}</strong>
+            <span className="drone-alert-banner-detail">{alerts[0].detail}</span>
+            {alerts.length > 1 && (
+              <span className="drone-alert-banner-more">
+                +{alerts.length - 1} more warning{alerts.length > 2 ? "s" : ""} · tap to hear PIP
+              </span>
+            )}
+          </span>
+        </button>
+      )}
+
       {decision && (
         <button type="button" className="drone-decision" onClick={onAnswer}>
           <span className="drone-decision-kicker">DECISION WAITING</span>
           <strong>{decision.shortTitle ?? decision.title}</strong>
           <span className="drone-decision-go">Answer PIP ›</span>
+        </button>
+      )}
+
+      {next && (
+        <button
+          type="button"
+          className="drone-next"
+          onClick={() => onTrack(next.subtask.target)}
+        >
+          <span className="drone-next-kicker">NEXT UP · {next.groupName}</span>
+          <strong>{next.subtask.label}</strong>
+          {next.subtask.how && <span className="drone-next-hint">{next.subtask.how}</span>}
+          <span className="drone-next-go">Walk me there ›</span>
         </button>
       )}
 
@@ -88,17 +140,6 @@ export default function DronePanel({
           </section>
         ))}
       </div>
-
-      {alerts.length > 0 && (
-        <section className="drone-alerts" aria-label="Warnings">
-          <h3>Alerts</h3>
-          {alerts.slice(0, 4).map((alert) => (
-            <p key={alert.id} className={`drone-alert-line drone-alert-${alert.level}`}>
-              <strong>{alert.title}</strong> {alert.detail}
-            </p>
-          ))}
-        </section>
-      )}
 
       {resources && (
         <p className="drone-panel-note">

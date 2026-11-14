@@ -1,5 +1,6 @@
 import { applyDelta } from "./resources";
 import { activeEvents, nightlyEventDelta } from "./events";
+import { ACTIVE_SITE } from "./profile";
 
 /** Overnight consequences, written as short kid-readable outcomes. */
 const POWER_NOTES = {
@@ -79,7 +80,9 @@ export function endDay(state) {
 
   const finished = list(current.doneSubtasks);
   next.day = (current.day ?? 1) + 1;
-  next.version = 2;
+  // Keep the current save version. Writing 2 here made every reload after a
+  // night run the legacy migration and wipe `seen`/`decisions`.
+  next.version = current.version ?? 3;
   // Interaction progress and choices belong to one Sol only. Subtask ids are
   // unique per Sol, so the completion log can safely carry over as history.
   next.seen = [];
@@ -123,7 +126,7 @@ export function endDay(state) {
     },
     completedSubtasks: finished.filter((id) => String(id).startsWith(`sol${String(current.day ?? 1).padStart(2, "0")}_`)),
     events: open.map((event) => ({ id: event.id, title: event.title, severity: event.severity })),
-    source: "NASA Mars weather archives are historical observations, not a forecast for Jezero.",
+    source: `NASA Mars weather archives are historical observations, not a forecast for ${ACTIVE_SITE.name}.`,
   };
 
   return {

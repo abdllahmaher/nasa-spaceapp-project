@@ -34,6 +34,19 @@ export const DRONE_GREET = {
   ],
 };
 
+/** The greeting with the commander's name from the landing page. */
+export function droneGreet(name = "") {
+  if (!name) return DRONE_GREET;
+  return {
+    ...DRONE_GREET,
+    title: `Commander ${name}! Down here!`,
+    body: [
+      DRONE_GREET.body[0],
+      `I'm your guide, Commander ${name}. I'll show you how the outpost works, then we get to work. Deal?`,
+    ],
+  };
+}
+
 /** Beat two: meet the crew. Unlocks the three introduction tasks. */
 export const DRONE_MEET = {
   speaker: "drone",
@@ -43,6 +56,39 @@ export const DRONE_MEET = {
     "Three humans came with us. They are excellent and slightly dramatic.",
     "Open my list and pick a name. I'll walk you to them — you just have to say hello.",
   ],
+  guide: {
+    doneLabel: "Open the crew list",
+    steps: [
+      {
+        target: { kind: "world", id: "kai" },
+        kicker: "PIP · CREW · 1/3",
+        icon: "wrench",
+        title: "Kai · Engineer",
+        body: "Kai keeps the power junction alive and fixes anything with a bolt loose. If a machine is grumbling, he is already on his way.",
+      },
+      {
+        target: { kind: "world", id: "nova" },
+        kicker: "PIP · CREW · 2/3",
+        icon: "drop",
+        title: "Nova · Air & Water",
+        body: "Nova watches the air recycler and the water reserve. She is the reason every breath on this outpost stays clean.",
+      },
+      {
+        target: { kind: "world", id: "rex" },
+        kicker: "PIP · CREW · 3/3",
+        icon: "star",
+        title: "Rex · Science",
+        body: "Rex reads the rocks, the weather and the samples. When something on Mars surprises us, he is the one taking notes.",
+      },
+      {
+        target: { kind: "world", id: "crew-group" },
+        kicker: "PIP · CREW",
+        icon: "crew",
+        title: "Your crew",
+        body: "Three humans came with us. They are excellent and slightly dramatic. Open my list, pick a name, and I'll walk you to them — you just have to say hello.",
+      },
+    ],
+  },
   choices: [
     {
       id: "drone_meet_go",
@@ -67,6 +113,39 @@ export const DRONE_BARS = {
     "FOOD is our pantry. It only goes down until a resupply arrives.",
     "PARTS are what we build and repair with. They are the reason some choices cost us later.",
   ],
+  guide: {
+    doneLabel: "Got it. Let's build",
+    steps: [
+      {
+        target: { kind: "ui", id: "hud-power" },
+        kicker: "PIP · SYSTEMS · 1/4",
+        icon: "bolt",
+        title: "Power",
+        body: "Our solar array stores power here. Everything runs on it, and it empties overnight.",
+      },
+      {
+        target: { kind: "ui", id: "hud-air" },
+        kicker: "PIP · SYSTEMS · 2/4",
+        icon: "drop",
+        title: "Air",
+        body: "The recycler turns carbon dioxide back into oxygen. If this drops, we fix it before it becomes a problem.",
+      },
+      {
+        target: { kind: "ui", id: "hud-food" },
+        kicker: "PIP · SYSTEMS · 3/4",
+        icon: "leaf",
+        title: "Food",
+        body: "This is our pantry. It only goes down between resupplies, so watch it and plan ahead.",
+      },
+      {
+        target: { kind: "ui", id: "hud-parts" },
+        kicker: "PIP · SYSTEMS · 4/4",
+        icon: "wrench",
+        title: "Parts",
+        body: "Spare parts build and repair the outpost. Every choice that spends them matters.",
+      },
+    ],
+  },
   choices: [
     {
       id: "drone_bars_go",
@@ -160,14 +239,70 @@ export function morningNode(day, previousOptionId) {
   };
 }
 
+const TARGET_NAMES = {
+  kai: "Kai",
+  nova: "Nova",
+  rex: "Rex",
+  "power-junction": "the power junction",
+  "life-support": "life support",
+  habitat: "the habitat dome",
+};
+
+/** A human-readable place for the guidance line. */
+function targetName(target) {
+  return TARGET_NAMES[target] ?? target ?? "the marker";
+}
+
+/**
+ * The next open task, announced by PIP after a completion (and after the
+ * morning line). This is the drone's core guidance beat: it never leaves the
+ * player wondering which task comes next.
+ */
+export function nextTaskNode(day, subtask, open = []) {
+  if (!subtask) return null;
+  const left = Array.isArray(open) ? open.length : 1;
+  return {
+    speaker: "drone",
+    eyebrow: `PIP · NEXT TASK · SOL ${day.day}`,
+    title: `Next: ${subtask.label}`,
+    body: [
+      subtask.how ?? subtask.why ?? "This is the next thing on today's list.",
+      left <= 1
+        ? `This is the last task on the list. ${targetName(subtask.target)} is waiting.`
+        : `${left} tasks are still open. I've marked ${targetName(subtask.target)} for you.`,
+    ],
+    choices: [
+      {
+        id: `drone_next_${subtask.id}`,
+        icon: subtask.icon ?? "crew",
+        label: "Walk me there",
+        detail: `Follow the marker to ${targetName(subtask.target)}.`,
+        action: "track",
+        targetId: subtask.target,
+        result: "Following your marker, Commander.",
+        toast: `Next: ${subtask.label}`,
+      },
+      {
+        id: `drone_next_list_${subtask.id}`,
+        icon: "crew",
+        label: "Show the task list",
+        detail: "Open PIP's list of everything left today.",
+        action: "panel",
+        result: "The list is open.",
+        toast: "Task list open",
+      },
+    ],
+  };
+}
+
 /** The drone turns a warning into a bubble the player cannot miss. */
 export function warningNode(alerts) {
   if (!alerts.length) return null;
   const worst = alerts[0];
   return {
     speaker: "drone",
-    eyebrow: "PIP · ALERT",
-    title: worst.title,
+    eyebrow: worst.kind === "forecast" ? "PIP · INCOMING" : "PIP · ALERT",
+    title: worst.kind === "forecast" ? `Incoming: ${worst.title}` : worst.title,
     body: [
       worst.detail,
       alerts.length > 1
@@ -201,6 +336,9 @@ export function decisionNode(day) {
       icon: option.icon ?? "crew",
       label: option.label,
       detail: option.detail,
+      // The bubble uses `cost` to draw pips and disable choices the outpost
+      // cannot afford; `applyDecision` enforces the same object.
+      cost: option.cost,
       action: "decision",
       optionId: option.id,
       result: option.reply,

@@ -31,9 +31,21 @@ export function createInitialState() {
     seen: [],
     decisions: {},
     completedEvents: [],
+    eventHistory: [],
+    doneSubtasks: [],
+    builds: [],
     // PIP keeps his own memory: the tour, alerts already delivered, and which
     // Sol he has already greeted or nudged.
-    drone: { step: "greet", seenAlerts: [], morningSeen: 0, nudgedDay: 0, meetIntroSeen: false },
+    drone: {
+      step: "greet",
+      seenAlerts: [],
+      morningSeen: 0,
+      nudgedDay: 0,
+      meetIntroSeen: false,
+      // Signature of the last open-task set PIP announced, so each step gets
+      // exactly one "next task" beat.
+      guidedFor: "",
+    },
     // One answer per Sol, kept forever so later Sols can react to it.
     decisionsByDay: {},
     lastReport: null,

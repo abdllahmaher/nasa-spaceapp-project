@@ -4,23 +4,31 @@ import { motion } from "framer-motion";
  * PIP in the world, drawn as an overlay so it can hover over the canvas and fly
  * to the edge of the screen without touching the game renderer.
  *
- * If you drop `assets/props/drone.png` into the project, pass `sprite` here and
- * the image replaces the drawn body — nothing else has to change.
+ * The sprite lives at `assets/props/drone.png`; the CSS-drawn body remains as a
+ * fallback for when the image is missing.
  */
-import sprite from "../assets/props/drone.png"
+import droneSprite from "../assets/props/drone.png";
+
 export default function DroneCompanion({
   mode = "dock",
   alert = false,
+  alertInfo = null,
+  alertCount = 0,
   open = false,
-  sprite = null,
+  sprite = droneSprite,
+  spot = null,
   onClick,
 }) {
   const active = mode === "talk" || open;
+  const spotStyle = spot
+    ? { left: `${spot.x}px`, top: `${spot.y}px`, bottom: "auto", right: "auto" }
+    : undefined;
 
   return (
     <motion.button
       type="button"
-      className={`drone drone-${mode} ${alert ? "drone-alert" : ""} ${open ? "is-open" : ""}`}
+      className={`drone drone-${mode} ${alert ? "drone-alert" : ""} ${open ? "is-open" : ""} ${spot ? "is-flying" : ""}`}
+      style={spotStyle}
       onClick={onClick}
       aria-label={alert ? "PIP has an alert. Open the drone panel." : "Open PIP, your outpost drone"}
       aria-expanded={open}
@@ -47,11 +55,31 @@ export default function DroneCompanion({
             <span className="drone-leg drone-leg-right" />
           </span>
         )}
-        <span className="drone-shadow" aria-hidden="true" />
+        {!sprite && <span className="drone-shadow" aria-hidden="true" />}
       </motion.span>
 
+      {alert && <span className="drone-alert-ring" aria-hidden="true" />}
       {alert && <span className="drone-badge" aria-hidden="true">!</span>}
-      {!open && !alert && <span className="drone-hint">PIP</span>}
+
+      {alert && !open && alertInfo && (
+        <motion.span
+          className={`drone-alert-callout drone-alert-${alertInfo.level}`}
+          aria-hidden="true"
+          initial={{ opacity: 0, x: -14, scale: 0.92 }}
+          animate={{ opacity: 1, x: 0, scale: 1 }}
+          transition={{ type: "spring", stiffness: 300, damping: 21 }}
+        >
+          <span className="drone-alert-kicker">
+            {alertInfo.kind === "forecast" ? "INCOMING" : "ALERT"}
+          </span>
+          <span className="drone-alert-title">{alertInfo.title}</span>
+          {alertCount > 1 && (
+            <span className="drone-alert-more">+{alertCount - 1} more</span>
+          )}
+        </motion.span>
+      )}
+
+      {!open && !alert && !active && <span className="drone-hint">PIP</span>}
     </motion.button>
   );
 }

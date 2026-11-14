@@ -5,7 +5,8 @@ import { createCamera } from "./camera";
 import { createPlayer, drawPlayer, updatePlayer, PLAYER_SHEET } from "./player";
 import { findInteractable } from "./interaction";
 import { WORLD } from "./world";
-import { SCENE } from "../data/world/scene";
+import { getScene } from "../data/world/scene";
+import { ACTIVE_SITE, COMMANDER } from "../logic/profile";
 import { collectSources, loadImage, loadImages } from "./engine/assets";
 import {
   isEntityInteractive,
@@ -21,6 +22,7 @@ import {
   drawPanorama,
   drawPrompt,
   drawQuestMarker,
+  entityMetrics,
   entityTop,
 } from "./engine/render";
 
@@ -38,6 +40,8 @@ export default function GameCanvas({
   cinematic = null,
   walkTo = null,
   crewCommand = null,
+  guideTargetId = null,
+  onGuideRect,
   onCrewCommandDone,
   onInteract,
   onIntroComplete,
@@ -53,6 +57,8 @@ export default function GameCanvas({
   const cinematicRef = useRef(cinematic);
   const walkToRef = useRef(walkTo);
   const crewCommandRef = useRef(crewCommand);
+  const guideTargetRef = useRef(guideTargetId);
+  const onGuideRectRef = useRef(onGuideRect);
   const onCrewCommandDoneRef = useRef(onCrewCommandDone);
   const onInteractRef = useRef(onInteract);
   const onIntroCompleteRef = useRef(onIntroComplete);
@@ -68,6 +74,8 @@ export default function GameCanvas({
     cinematicRef.current = cinematic;
     walkToRef.current = walkTo;
     crewCommandRef.current = crewCommand;
+    guideTargetRef.current = guideTargetId;
+    onGuideRectRef.current = onGuideRect;
     onCrewCommandDoneRef.current = onCrewCommandDone;
     onInteractRef.current = onInteract;
     onIntroCompleteRef.current = onIntroComplete;
@@ -81,6 +89,8 @@ export default function GameCanvas({
     cinematic,
     walkTo,
     crewCommand,
+    guideTargetId,
+    onGuideRect,
     onCrewCommandDone,
     onInteract,
     onIntroComplete,
@@ -97,10 +107,40 @@ export default function GameCanvas({
     canvas.height = WORLD.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+    /**
+     * The canvas fills the window with `object-fit: cover`, so the painted
+     * bitmap is scaled up and centred, then cropped. Pointer coordinates and
+     * overlay boxes must be mapped through that painted box, not the element.
+     */
+    const contentBox = () => {
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return { left: rect.left, top: rect.top, width: 0, height: 0 };
+      }
+
+      const ratio = WORLD.width / WORLD.height;
+      const elementRatio = rect.width / rect.height;
+      const contain = getComputedStyle(canvas).objectFit === "contain";
+      let { width, height } = rect;
+      let left = rect.left;
+      let top = rect.top;
+
+      if (contain ? elementRatio > ratio : elementRatio <= ratio) {
+        width = rect.height * ratio;
+        left += (rect.width - width) / 2;
+      } else {
+        height = rect.width / ratio;
+        top += (rect.height - height) / 2;
+      }
+
+      return { left, top, width, height };
+    };
+
     const input = createInput(window);
     const player = createPlayer();
     const camera = createCamera(WORLD.introFocusX);
-    const entities = prepareEntities(SCENE.entities);
+    const scene = getScene(ACTIVE_SITE.id);
+    const entities = prepareEntities(scene.entities);
     const rocket = entities.find((entity) => entity.id === "arrival-rocket");
     const crew = entities.filter((entity) => CREW_IDS.includes(entity.id));
     const stationOf = (member) =>
@@ -143,6 +183,110 @@ export default function GameCanvas({
     }
 
     const ready = () => panoramas.length > 0 && spritesheet !== null;
+
+    // ------------------------------------------------------ guided spotlight
+
+    let lastGuideTarget = null;
+    let lastGuidePublish = -1;
+    let lastGuideRect = null;
+
+    /** Screen-space box of one entity, including its nameplate. */
+    const entityScreenBox = (entity) => {
+      const view = entity.behavior?.getView?.();
+      const src = view?.src ?? entity.sprite?.src;
+      const image = images.get(src);
+      if (!image) return null;
+
+      const top = entityTop(entity, images);
+      if (top === null) return null;
+
+      const worldX = nearestWorldX(entity, period, camera.getCenter());
+      const screenX = worldX - camera.getLeft();
+      const { w } = entityMetrics(entity, view, image);
+      return {
+        x: screenX - w / 2 - 8,
+        y: top - 28,
+        w: w + 16,
+        h: entity.y - top + 32,
+      };
+    };
+
+    const guideBox = (id) => {
+      if (id === "crew-group") {
+        const boxes = crew.map(entityScreenBox).filter(Boolean);
+        if (!boxes.length) return null;
+        const left = Math.min(...boxes.map((box) => box.x));
+        const right = Math.max(...boxes.map((box) => box.x + box.w));
+        const top = Math.min(...boxes.map((box) => box.y));
+        const bottom = Math.max(...boxes.map((box) => box.y + box.h));
+        return { x: left, y: top, w: right - left, h: bottom - top };
+      }
+
+      const entity = entities.find((entry) => entry.id === id);
+      return entity ? entityScreenBox(entity) : null;
+    };
+
+    /** Ease the camera to PIP's subject while a spotlight is on screen. */
+    const updateGuideCamera = (dt) => {
+      const id = guideTargetRef.current;
+      if (!id || !ready()) {
+        lastGuideTarget = null;
+        return null;
+      }
+
+      let center = null;
+      if (id === "crew-group") {
+        const xs = crew.map((member) =>
+          nearestWorldX(member, period, camera.getCenter()),
+        );
+        center = xs.reduce((sum, x) => sum + x, 0) / xs.length;
+      } else {
+        const entity = entities.find((entry) => entry.id === id);
+        if (entity) center = nearestWorldX(entity, period, camera.getCenter());
+      }
+
+      if (center === null) return null;
+      if (id !== lastGuideTarget) {
+        camera.centerOn(center);
+        lastGuideTarget = id;
+      } else {
+        camera.lookAt(center, dt);
+      }
+      return id;
+    };
+
+    /** Convert the subject's canvas box to viewport pixels for the DOM overlay. */
+    const publishGuideRect = () => {
+      const id = guideTargetRef.current;
+      if (!id || !ready() || clock - lastGuidePublish < 0.08) return;
+
+      const box = guideBox(id);
+      if (!box) return;
+      lastGuidePublish = clock;
+
+      const frame = contentBox();
+      const sx = frame.width / WORLD.width;
+      const sy = frame.height / WORLD.height;
+      const next = {
+        entityId: id,
+        left: frame.left + box.x * sx,
+        top: frame.top + box.y * sy,
+        width: box.w * sx,
+        height: box.h * sy,
+      };
+
+      const unchanged =
+        lastGuideRect &&
+        lastGuideRect.entityId === next.entityId &&
+        Math.abs(lastGuideRect.left - next.left) < 0.5 &&
+        Math.abs(lastGuideRect.top - next.top) < 0.5 &&
+        Math.abs(lastGuideRect.width - next.width) < 0.5 &&
+        Math.abs(lastGuideRect.height - next.height) < 0.5;
+      if (unchanged) return;
+
+      lastGuideRect = next;
+      onGuideRectRef.current?.(next);
+    };
 
     const draw = () => {
       ctx.clearRect(0, 0, WORLD.width, WORLD.height);
@@ -285,7 +429,7 @@ export default function GameCanvas({
         ctx.restore();
       }
 
-
+      publishGuideRect();
     };
 
     const startArrival = () => {
@@ -532,10 +676,10 @@ export default function GameCanvas({
     // ---------------------------------------------------------------- mouse
 
     const toWorld = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      if (!rect.width || !rect.height) return null;
-      const sx = ((event.clientX - rect.left) / rect.width) * WORLD.width;
-      const sy = ((event.clientY - rect.top) / rect.height) * WORLD.height;
+      const frame = contentBox();
+      if (!frame.width || !frame.height) return null;
+      const sx = ((event.clientX - frame.left) / frame.width) * WORLD.width;
+      const sy = ((event.clientY - frame.top) / frame.height) * WORLD.height;
       return { sx, sy, worldX: camera.getLeft() + sx };
     };
 
@@ -620,6 +764,9 @@ export default function GameCanvas({
       const pausedNow = pausedRef.current;
       clock += dt;
 
+      // A spotlight tour keeps the camera moving even though gameplay is paused.
+      const guideId = updateGuideCamera(dt);
+
       if (pausedNow) {
         if (!wasPaused) input.clear();
         wasPaused = true;
@@ -670,7 +817,7 @@ export default function GameCanvas({
           }
         }
 
-        if (!focused) camera.update(dt, player.x);
+        if (!focused && !guideId) camera.update(dt, player.x);
       }
 
       if (input.consume("debug")) debug = !debug;
@@ -680,18 +827,20 @@ export default function GameCanvas({
     const loop = createLoop(update);
 
     Promise.all([
-      loadImages(collectSources(SCENE.backgrounds, entities)),
+      loadImages(collectSources(scene.backgrounds, entities)),
       loadImage(PLAYER_SHEET),
     ]).then(([sceneImages, sprite]) => {
       if (disposed) return;
 
       images = sceneImages;
       spritesheet = sprite;
-      panoramas = SCENE.backgrounds.map((layer) => ({
+      panoramas = scene.backgrounds.map((layer) => ({
         layer,
         panorama: buildPanorama(images.get(layer.src)),
       }));
-      period = (panoramas[0]?.panorama.width ?? WORLD.width) * 2;
+      // Keep the entity wrap distance wide enough that the outpost never
+      // repeats on screen, even when the chosen backdrop is a narrower image.
+      period = Math.max(2900, (panoramas[0]?.panorama.width ?? WORLD.width) * 2);
       loop.start();
     });
 
@@ -711,7 +860,7 @@ export default function GameCanvas({
         className="game-canvas"
         aria-label="Mars surface. Move with WASD or arrows, Space to jump, E to inspect, or click a marked spot to walk there. F2 for debug."
       />
-      <span className="game-badge">Layla · Commander · Surface EVA</span>
+      <span className="game-badge">Layla · {COMMANDER} · Surface EVA</span>
     </div>
   );
 }

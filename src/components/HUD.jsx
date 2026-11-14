@@ -5,18 +5,18 @@ import PixelIcon from "./PixelIcon";
  * keeps only the four systems the drone teaches on Sol 1.
  */
 const METERS = [
-  { key: "storedPower", label: "Power", icon: "bolt", color: "#ffd166" },
-  { key: "lifeSupportCondition", label: "Air", icon: "drop", color: "#7ee0ff" },
-  { key: "food", label: "Food", icon: "leaf", color: "#9df5a8" },
+  { key: "storedPower", label: "Power", icon: "bolt", color: "#ffd166", guideId: "hud-power" },
+  { key: "lifeSupportCondition", label: "Air", icon: "drop", color: "#7ee0ff", guideId: "hud-air" },
+  { key: "food", label: "Food", icon: "leaf", color: "#9df5a8", guideId: "hud-food" },
 ];
 
 const BLOCKS = 10;
 
-function Meter({ label, icon, color, value }) {
+function Meter({ label, icon, color, value, guideId }) {
   const filled = Math.round((Math.max(0, Math.min(100, value)) / 100) * BLOCKS);
 
   return (
-    <div className="meter" style={{ "--meter-color": color }}>
+    <div className="meter" style={{ "--meter-color": color }} data-pip-target={guideId}>
       <span className="meter-icon">
         <PixelIcon name={icon} size={12} />
       </span>
@@ -41,16 +41,24 @@ export default function HUD({ resources }) {
             icon={meter.icon}
             color={meter.color}
             value={resources[meter.key] ?? 0}
+            guideId={meter.guideId}
           />
         ))}
-        <div className="parts">
+        <div className="parts" data-pip-target="hud-parts">
           <span className="parts-label">
             <PixelIcon name="wrench" size={11} /> Parts
           </span>
-          <span className="parts-pips" aria-label={`${resources.spareParts} spare parts`}>
-            {[0, 1, 2, 3].map((i) => (
-              <span key={i} className={i < resources.spareParts ? "is-filled" : ""} />
-            ))}
+          <span
+            className="parts-pips"
+            aria-label={`${resources.spareParts} spare parts`}
+          >
+            {Array.from(
+              // Four is the usual load-out, but a survey can add a fifth.
+              { length: Math.max(4, Math.ceil(resources.spareParts ?? 0)) },
+              (_, i) => (
+                <span key={i} className={i < resources.spareParts ? "is-filled" : ""} />
+              ),
+            )}
           </span>
         </div>
       </section>

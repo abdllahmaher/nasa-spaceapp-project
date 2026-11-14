@@ -95,7 +95,7 @@ export const SOL05 = {
     site: JEZERO_SITE,
     weather: {
       headline: "Clear, cold morning",
-      level: "clear",
+      level: "frost",
       line: "A clear Sol at Jezero. Night temperatures here drop to around minus 80°C, so a clear sky is a cold sky.",
       issuedAt: "Jezero observations · Mars Year 36",
       source: "NASA · Mars facts",
@@ -147,7 +147,8 @@ export const SOL05 = {
         icon: "bolt",
         label: "Call the ship in",
         detail: "Light the beacon tonight. The ship lands at dawn.",
-        effects: { spareParts: -1, food: 6 },
+        cost: { spareParts: 1 },
+        effects: { food: 6 },
         setFlags: ["windowOpen"],
         reply:
           "Beacon is bright, Commander. The ship is on its way down. We did it — five Sols, one outpost, one very loud drone.",

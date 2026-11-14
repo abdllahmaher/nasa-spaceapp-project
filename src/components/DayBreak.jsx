@@ -1,5 +1,6 @@
 import Portrait from "./Portrait";
 import PixelIcon from "./PixelIcon";
+import { COMMANDER } from "../logic/profile";
 
 const FALLBACK = {
   icon: "drop",
@@ -23,7 +24,7 @@ export default function DayBreak({ report, onBegin }) {
             Nova <span>Air &amp; Water</span>
           </p>
           <h2 id="daybreak-title" className="vn-title">
-            Morning, Commander!
+            Morning, {COMMANDER}!
           </h2>
 
           <div className="vn-lines">

@@ -71,7 +71,12 @@ export function missionProgress(state, day) {
  * resource effect and any event it clears. Idempotent, so a repeated choice
  * can never double-count.
  */
-export function completeSubtask(state, subtaskId, subtasks = []) {
+export function completeSubtask(
+  state,
+  subtaskId,
+  subtasks = [],
+  { applyCost = true } = {},
+) {
   const subtask = subtasks.find((entry) => entry.id === subtaskId);
   if (!subtask || isSubtaskDone(state, subtask)) return state;
 
@@ -81,8 +86,9 @@ export function completeSubtask(state, subtaskId, subtasks = []) {
   if (subtask.builds) {
     next.builds = [...new Set([...list(next.builds), subtask.builds])];
   }
-  // Some tasks cost parts up front (a spare cartridge, a new bolt).
-  if (subtask.cost) {
+  // Some tasks cost parts up front (a spare cartridge, a new bolt). The chat
+  // layer passes `applyCost: false` when it already paid the cost up front.
+  if (applyCost && subtask.cost) {
     next.resources = payCost(next.resources, subtask.cost);
   }
   if (subtask.effect) {

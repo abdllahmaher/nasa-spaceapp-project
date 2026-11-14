@@ -1,6 +1,7 @@
 import { activeEvents } from "./events";
-import { applyEffects } from "./resources";
-import { isSubtaskDone, subtaskGroups } from "./missions";
+import { applyEffects, canAfford, formatCost, payCost } from "./resources";
+import { isSubtaskDone, openSubtasks, subtaskGroups } from "./missions";
+import { getDay } from "../story/days";
 
 /**
  * PIP — the outpost drone.
@@ -21,6 +22,46 @@ const RESOURCE_ALERTS = [
   { key: "food", below: 25, level: "warning", title: "Food running low", detail: "Rations are below a quarter. Plan a resupply before the end of the week." },
   { key: "habitatSafety", below: 45, level: "critical", title: "Habitat seal weak", detail: "Pressure is dropping. Ask Kai to check the seal." },
 ];
+
+/** Weather that deserves a warning the Sol before it lands. */
+const INCOMING_WEATHER = {
+  storm: {
+    level: "critical",
+    title: "Dust storm arriving tomorrow",
+    detail: "A wall of dust is one Sol out. Secure the array and the air intake before it lands.",
+  },
+  dust: {
+    level: "warning",
+    title: "Dust on the way",
+    detail: "Dust devils are expected tomorrow. Check the filters and panels today.",
+  },
+  frost: {
+    level: "warning",
+    title: "Hard frost tonight",
+    detail: "Temperatures are dropping fast. Keep the crew and the seals warm before night.",
+  },
+};
+
+/** "Something is coming" warnings read from tomorrow's weather. */
+function forecastAlerts(state) {
+  if ((state.day ?? 1) < 2) return [];
+  const next = getDay((state.day ?? 1) + 1);
+  const nextLevel = next?.briefing?.weather?.level ?? next?.weather?.level;
+  const incoming = INCOMING_WEATHER[nextLevel];
+  if (!incoming) return [];
+
+  // Do not warn about a storm that is already overhead.
+  const todayLevel = getDay(state.day)?.briefing?.weather?.level;
+  if (todayLevel === nextLevel && nextLevel === "storm") return [];
+
+  return [
+    {
+      id: `forecast:${next.day}:${nextLevel}`,
+      kind: "forecast",
+      ...incoming,
+    },
+  ];
+}
 
 /** Everything the drone should tell the player right now. */
 export function droneAlerts(state) {
@@ -48,8 +89,13 @@ export function droneAlerts(state) {
     });
   }
 
-  // Critical first, so the drone always shouts about the worst thing.
-  return alerts.sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
+  alerts.push(...forecastAlerts(state));
+
+  // Critical first, then incoming forecasts, then the rest. A forecast leads
+  // the warning block so the player has a Sol to prepare.
+  const rank = (alert) =>
+    alert.level === "critical" ? 0 : alert.kind === "forecast" ? 1 : 2;
+  return alerts.sort((a, b) => rank(a) - rank(b));
 }
 
 /** Alerts the player has not been told about yet. */
@@ -86,6 +132,24 @@ export function dayComplete(state, day) {
   return subtasks.length > 0 && subtasks.every((subtask) => isSubtaskDone(state, subtask));
 }
 
+/**
+ * The task PIP should announce next, plus a key for the current open set.
+ *
+ * Keying on the whole open set means finishing any task re-triggers exactly
+ * one guidance beat, even when the player does the list out of order. Closing
+ * the bubble does not re-open it, because the key has already been recorded.
+ */
+export function nextGuidance(state, day) {
+  const open = openSubtasks(state, day);
+  const task = open[0] ?? null;
+  if (!task) return null;
+  return {
+    task,
+    open,
+    key: `${state.day}:${open.map((subtask) => subtask.id).join("|")}`,
+  };
+}
+
 /** The decision this Sol is waiting on, or null when already answered. */
 export function pendingDecision(state, day) {
   const decision = day?.decision;
@@ -106,7 +170,17 @@ export function applyDecision(state, day, optionId) {
   if (!decision || !option) return { ok: false, message: "That option is not available." };
   if (state.decisionsByDay?.[day.day]) return { ok: false, message: "You already decided this today." };
 
+  // Decision prices are real costs, not flavour: reject the option if the
+  // outpost cannot pay for it instead of silently clamping to zero.
+  if (!canAfford(state.resources, option.cost)) {
+    return {
+      ok: false,
+      message: `Not enough resources. Required: ${formatCost(option.cost)}.`,
+    };
+  }
+
   const next = structuredClone(state);
+  next.resources = payCost(next.resources, option.cost);
   next.resources = applyEffects(next.resources, option.effects);
   next.flags = [...new Set([...list(next.flags), ...list(option.setFlags)])];
   next.decisionsByDay = { ...(next.decisionsByDay ?? {}), [day.day]: optionId };

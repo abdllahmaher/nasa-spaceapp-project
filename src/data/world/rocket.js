@@ -57,7 +57,7 @@ export const ROCKET_ENTITIES = [
     },
     shadow: true,
     behavior: {
-      type: "rocket",
+       type: "rocket",
       config: {
         fps: 12,
         descentSeconds: 4.5,

@@ -83,7 +83,10 @@ export function crewTask({
       title: "Good question",
       body: why,
       choices: [
-        { ...confirm, id: `${subtaskId}_go_after_why`, resultNode: target },
+        // Keep the same id as the main confirm: the choice is recorded under
+        // both nodes, so reopening the crew member shows the result instead of
+        // letting the player complete the task (and its effects) again.
+        { ...confirm, resultNode: target },
         {
           id: `${subtaskId}_later`,
           icon: "moon",

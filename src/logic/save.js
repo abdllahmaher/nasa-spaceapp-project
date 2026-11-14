@@ -1,3 +1,5 @@
+import { clampResource } from "./resources";
+
 const SAVE_KEY = "mars-outpost-mission-v2";
 
 const DEFAULT_RESOURCES = {
@@ -42,11 +44,19 @@ export function normalizeState(state) {
   const migratedBuilds =
     builds.length === 0 && day > 1 ? ["power-junction", "life-support", "habitat-dome"] : builds;
 
+  // Coerce and clamp every known resource. A hand-edited or very old save with
+  // `"72"` or `null` used to turn later math into string concatenation/NaN.
+  const savedResources = asObject(base.resources);
+  const resources = {};
+  for (const [key, fallback] of Object.entries(DEFAULT_RESOURCES)) {
+    resources[key] = clampResource(key, savedResources[key] ?? fallback);
+  }
+
   return {
     ...base,
     version: Number.isFinite(base.version) ? base.version : 1,
     day,
-    resources: { ...DEFAULT_RESOURCES, ...asObject(base.resources) },
+    resources,
     crew: normalizedCrew,
     mission: { scienceProgress: 0, samplesCollected: 0, objectivesCompleted: [], ...asObject(base.mission) },
     drone: {
@@ -57,6 +67,7 @@ export function normalizeState(state) {
       morningSeen: base.drone?.morningSeen ?? 0,
       nudgedDay: base.drone?.nudgedDay ?? 0,
       meetIntroSeen: base.drone?.meetIntroSeen ?? true,
+      guidedFor: typeof base.drone?.guidedFor === "string" ? base.drone.guidedFor : "",
     },
     flags: asArray(base.flags),
     seen: asArray(base.seen),

@@ -5,6 +5,7 @@ import { SOL04 } from "../../data/sols/sol04";
 import { SOL05 } from "../../data/sols/sol05";
 import { crewTask, mergeNodes } from "../../data/sols/helpers";
 import { objectivesFromSubtasks } from "../../logic/missions";
+import { ACTIVE_SITE, applySiteToDay } from "../../logic/profile";
 import { JEZERO_SITE } from "../../data/nasa/sources";
 
 /**
@@ -107,19 +108,22 @@ function generatedSol(day) {
 }
 
 /** Compiles one Sol of authored data into the runtime day object. */
-export function buildDay(sol) {
-  return {
-    day: sol.day,
-    location: sol.location,
-    coordinates: sol.coordinates,
-    mission: sol.mission,
-    subtasks: sol.subtasks,
-    events: sol.events ?? [],
-    decision: sol.decision ?? null,
-    briefing: sol.briefing,
-    objectives: objectivesFromSubtasks(sol.subtasks),
-    interactions: sol.dialogue,
-  };
+export function buildDay(sol, site = ACTIVE_SITE) {
+  return applySiteToDay(
+    {
+      day: sol.day,
+      location: sol.location,
+      coordinates: sol.coordinates,
+      mission: sol.mission,
+      subtasks: sol.subtasks,
+      events: sol.events ?? [],
+      decision: sol.decision ?? null,
+      briefing: sol.briefing,
+      objectives: objectivesFromSubtasks(sol.subtasks),
+      interactions: sol.dialogue,
+    },
+    site,
+  );
 }
 
 /**
@@ -162,9 +166,9 @@ export function resolveDay(day, state) {
   };
 }
 
-export function getDay(day) {
+export function getDay(day, site = ACTIVE_SITE) {
   const sol = SOLS[day] ?? generatedSol(day);
-  return buildDay(sol);
+  return buildDay(sol, site);
 }
 
 export { SOL01, SOL02, SOL03, SOL04, SOL05 };
