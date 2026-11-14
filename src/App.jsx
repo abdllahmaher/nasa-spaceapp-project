@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import GameCanvas from "./game/GameCanvas";
 import HUD from "./components/HUD";
@@ -7,28 +7,50 @@ import InteractionModal from "./components/InteractionModal";
 import EndDayReport from "./components/EndDayReport";
 import DayBreak from "./components/DayBreak";
 import Toast from "./components/Toast";
+import DroneCompanion from "./components/DroneCompanion";
+import DronePanel from "./components/DronePanel";
 import { createInitialState } from "./logic/initialState";
 import { applyChoice, markSeen } from "./logic/choices";
 import { endDay } from "./logic/dailyCycle";
 import { buildStatus } from "./logic/status";
-import { clearGame, loadGame, saveGame } from "./logic/save";
-import { getDay } from "./story/days";
+import { clearGame, loadGame, normalizeState, saveGame } from "./logic/save";
+import { getDay, resolveDay } from "./story/days";
+import {
+  DRONE_BARS,
+  DRONE_DAY_DONE,
+  DRONE_GREET,
+  DRONE_MEET,
+  decisionNode,
+  morningNode,
+  warningNode,
+} from "./data/drone/script";
+import {
+  applyDecision,
+  dayComplete,
+  droneAlerts,
+  droneTasks,
+  groupComplete,
+  markAlertsSeen,
+  newAlerts,
+  pendingDecision,
+  setTutorialStep,
+  tutorialStep,
+} from "./logic/drone";
 import "./App.css";
 
 const SAVED_MISSION = loadGame();
+const MEET_GROUP = "Meet the crew";
 
 export default function App() {
   const [state, setState] = useState(() => {
     if (!SAVED_MISSION) return createInitialState();
     // One-time migration for older saves: Sol 1 is now construction-only,
     // and every Sol starts with a fresh set of crew check-ins.
-    if ((SAVED_MISSION.version ?? 1) < 2) {
-      return { ...SAVED_MISSION, version: 2, seen: [], decisions: {} };
+    const legacy = (SAVED_MISSION.version ?? 1) < 3;
+    if (legacy) {
+      return { ...normalizeState(SAVED_MISSION), version: 3, seen: [], decisions: {} };
     }
-    if (SAVED_MISSION.day === 2 && SAVED_MISSION.completedEvents?.includes("day01")) {
-      return { ...SAVED_MISSION, seen: [], decisions: {} };
-    }
-    return SAVED_MISSION;
+    return normalizeState(SAVED_MISSION);
   });
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
@@ -43,9 +65,9 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [toastKind, setToastKind] = useState("success");
   const [crewCommand, setCrewCommand] = useState(null);
+  const [droneOpen, setDroneOpen] = useState(false);
   const crewCommandStateRef = useRef(crewCommand);
   useEffect(() => { crewCommandStateRef.current = crewCommand; }, [crewCommand]);
-  const [showSleepPrompt, setShowSleepPrompt] = useState(false);
   const crewCommandToken = useRef(0);
   const toastTimer = useRef(null);
   const taskToken = useRef(0);
@@ -53,30 +75,24 @@ export default function App() {
   const pendingBubble = useRef(null);
 
   const day = getDay(state.day);
-  const objectives = day.objectives.map((objective) => ({
+  // Story text can react to earlier decisions, so resolve it against the save.
+  const story = resolveDay(day, state);
+  const objectives = story.objectives.map((objective) => ({
     ...objective,
     done: objective.check(state),
-    progress: objective.progress?.(state) ?? 0,
-    progressMax: objective.progressMax ?? 0,
-    // First place the child still has to visit for this task.
     nextTarget: (objective.targets ?? []).find(
       (target) => !objective.targetOpen || objective.targetOpen(target, state),
     ),
   }));
-  const canEndDay = objectives.every((objective) => objective.done);
-  const hazards = useMemo(() => {
-    const alerts = [];
-    if (state.resources.lifeSupportCondition <= 35) alerts.push({ level: "critical", title: "OXYGEN SYSTEM CRITICAL", detail: "Life-support condition is dangerously low." });
-    else if (state.resources.lifeSupportCondition <= 55) alerts.push({ level: "warning", title: "LIFE-SUPPORT WARNING", detail: "Check the oxygen system soon." });
-    if (state.resources.powerCondition <= 30 || state.resources.storedPower <= 20) alerts.push({ level: "critical", title: "POWER FAILURE RISK", detail: "Power reserves or generator condition are critical." });
-    else if (state.resources.powerCondition <= 50 || state.resources.storedPower <= 35) alerts.push({ level: "warning", title: "LOW POWER", detail: "Reduce consumption and inspect the power junction." });
-    if (state.resources.habitatSafety <= 45) alerts.push({ level: "critical", title: "HABITAT SAFETY ALERT", detail: "The habitat needs immediate inspection." });
-    if (state.resources.food <= 20) alerts.push({ level: "warning", title: "FOOD RESERVES LOW", detail: "Food supplies are running low." });
-    return alerts;
-  }, [state.resources]);
+  const tasksDone = dayComplete(state, story);
+  const decision = pendingDecision(state, story);
+  const canEndDay = tasksDone && !decision;
+  const alerts = droneAlerts(state);
+  const groups = droneTasks(state, story);
   const status = buildStatus(state);
-  const weather = day.briefing?.weather ?? day.weather ?? {};
+  const weather = story.briefing?.weather ?? story.weather ?? {};
   const weatherLevel = weather.level ?? "clear";
+  const droneSpeaking = active?.speaker === "drone";
 
   // Which places still need a visit? Drawn as bouncing pins in the world.
   const markers = {};
@@ -105,13 +121,6 @@ export default function App() {
     [],
   );
 
-  useEffect(() => {
-    setShowSleepPrompt(false);
-    if (!canEndDay || phase !== "playing") return undefined;
-    const timer = window.setTimeout(() => setShowSleepPrompt(true), 7000);
-    return () => window.clearTimeout(timer);
-  }, [canEndDay, phase, state.day]);
-
   const issueCrewCommand = (type) => {
     crewCommandToken.current += 1;
     setCrewCommand({ token: crewCommandToken.current, type });
@@ -133,16 +142,81 @@ export default function App() {
     }
   }, []);
 
+  /** PIP takes over the bubble: same component, a different speaker. */
+  const openDroneNode = useCallback((node) => {
+    if (!node) return;
+    setDroneOpen(false);
+    setActive({ ...node, targetId: "drone", chosenId: null });
+    setPhase("interaction");
+  }, []);
+
+  const commit = useCallback((next) => {
+    setState(next);
+    saveGame(next);
+  }, []);
+
+  /* ------------------------------------------------------- PIP's beats
+   *
+   * One effect decides who speaks next, in priority order: the tour, the
+   * morning line, the day's decision, the "everything is done" nudge, then any
+   * fresh warning. Every branch records progress in state first, so the same
+   * bubble can never open twice.
+   */
+  useEffect(() => {
+    if (phase !== "playing" || droneOpen) return;
+
+    const step = tutorialStep(state);
+
+    if (state.day === 1 && step === "greet") {
+      openDroneNode(DRONE_GREET);
+      return;
+    }
+
+    if (state.day === 1 && step === "meet") {
+      // Second beat of the tour: PIP explains who the crew are.
+      if (!state.drone?.meetIntroSeen) {
+        commit({ ...state, drone: { ...state.drone, meetIntroSeen: true } });
+        openDroneNode(DRONE_MEET);
+        return;
+      }
+      if (groupComplete(state, story, MEET_GROUP)) {
+        commit(setTutorialStep(state, "bars"));
+        openDroneNode(DRONE_BARS);
+      }
+      return;
+    }
+
+    if (state.day > 1 && state.drone?.morningSeen !== state.day) {
+      commit({ ...state, drone: { ...state.drone, morningSeen: state.day } });
+      openDroneNode(morningNode(story, state.decisionsByDay?.[state.day - 1]));
+      return;
+    }
+
+    if (decision) {
+      openDroneNode(decisionNode(story));
+      return;
+    }
+
+    if (tasksDone && state.drone?.nudgedDay !== state.day) {
+      commit({ ...state, drone: { ...state.drone, nudgedDay: state.day } });
+      openDroneNode(DRONE_DAY_DONE);
+      return;
+    }
+
+    const fresh = newAlerts(state);
+    if (fresh.length) {
+      commit(markAlertsSeen(state, fresh));
+      openDroneNode(warningNode(fresh));
+    }
+  }, [phase, droneOpen, state, story, decision, tasksDone, openDroneNode, commit]);
+
   const handleInteract = useCallback(
     (request) => {
-      const content = day.interactions[request.targetId];
+      const content = story.interactions[request.targetId];
       if (!content) return;
 
       const next = markSeen(state, request.targetId);
-      if (next !== state) {
-        setState(next);
-        saveGame(next);
-      }
+      if (next !== state) commit(next);
 
       setActive({
         ...content,
@@ -151,23 +225,60 @@ export default function App() {
       });
       setPhase("interaction");
     },
-    [day, state],
+    [story, state, commit],
   );
 
   const handleChoose = (choice) => {
-    const result = applyChoice(state, active, choice);
+    // The drone's own buttons: sleep, and the day's decision.
+    if (choice.action === "sleep") {
+      setActive(null);
+      setPhase("playing");
+      if (canEndDay) {
+        setPhase("sleeping");
+        issueCrewCommand("sleep");
+      }
+      return;
+    }
+
+    if (choice.action === "decision") {
+      const result = applyDecision(state, story, choice.optionId);
+      if (!result.ok) {
+        showToast(result.message);
+        return;
+      }
+      commit(result.state);
+      setActive((current) => ({ ...current, chosenId: choice.id, result: result.result }));
+      showToast(result.toast);
+      return;
+    }
+
+    const result = applyChoice(state, active, choice, { subtasks: story.subtasks });
     if (!result.ok) {
       showToast(result.message);
       return;
     }
 
-    setState(result.state);
-    saveGame(result.state);
+    // The tour advances on the choice, not on the bubble closing.
+    let nextState = result.state;
+    if (choice.tutorial) nextState = setTutorialStep(nextState, choice.tutorial);
+    commit(nextState);
+
+    // Branching dialogue: the choice names the next node, the bubble stays put.
+    if (result.next && story.interactions[result.next]) {
+      setActive({ ...story.interactions[result.next], targetId: result.next, chosenId: null });
+      showToast(result.toast);
+      return;
+    }
+
+    // A branch node can hand its result back to the crew member's own bubble,
+    // so the recap never appears under a "Why do we need this?" title.
+    const resultBase =
+      (choice.resultNode && story.interactions[choice.resultNode]) || active;
 
     if (result.scene) {
       // Hide the bubble, show the crew doing the job, then report back.
       pendingBubble.current = {
-        ...active,
+        ...resultBase,
         chosenId: choice.id,
         result: result.result,
         toast: result.toast,
@@ -180,7 +291,9 @@ export default function App() {
     }
 
     setActive((current) => ({
-      ...current,
+      ...(choice.resultNode && story.interactions[choice.resultNode]
+        ? story.interactions[choice.resultNode]
+        : current),
       chosenId: choice.id,
       result: result.result,
     }));
@@ -206,10 +319,11 @@ export default function App() {
     setPhase("playing");
   };
 
-  /** Walk Layla to a place from the quest list, the world, or a bubble. */
+  /** Walk Layla to a place from the drone panel, the world, or a bubble. */
   const handleTrack = (targetId) => {
     if (!targetId) return;
     if (phase !== "playing") return;
+    setDroneOpen(false);
     walkToken.current += 1;
     setWalkTo({ token: walkToken.current, targetId });
   };
@@ -224,9 +338,12 @@ export default function App() {
   };
 
   const handleEndDay = () => {
-    if (!canEndDay) return;
+    if (!canEndDay) {
+      showToast(decision ? "PIP needs your decision first." : "Finish today's tasks first.");
+      return;
+    }
     setActive(null);
-    setShowSleepPrompt(false);
+    setDroneOpen(false);
     setPhase("sleeping");
     issueCrewCommand("sleep");
   };
@@ -234,11 +351,6 @@ export default function App() {
   const handleContinue = () => {
     setPhase("waking");
     issueCrewCommand("wake");
-  };
-
-  const handleReplay = () => {
-    clearGame();
-    window.location.reload();
   };
 
   const handleReset = () => {
@@ -251,6 +363,11 @@ export default function App() {
   const handleIntroComplete = useCallback(() => {
     setPhase((current) => (current === "intro" ? "briefing" : current));
   }, []);
+
+  const toggleDrone = () => {
+    if (phase !== "playing" && phase !== "interaction") return;
+    setDroneOpen((open) => !open);
+  };
 
   return (
     <div className="app">
@@ -274,6 +391,7 @@ export default function App() {
           paused={paused}
           inputEnabled={inputEnabled}
           startLanded={Boolean(SAVED_MISSION)}
+          builds={state.builds}
           status={status}
           markers={markers}
           cinematic={cinematic}
@@ -286,16 +404,36 @@ export default function App() {
         />
 
         {["playing", "interaction", "cinematic"].includes(phase) && (
-          <HUD
-            day={state.day}
-            location={day.location}
-            objectives={objectives}
-            resources={state.resources}
-            onEndDay={handleEndDay}
-            onTrack={handleTrack}
-            canEndDay={canEndDay}
-            showSleepPrompt={showSleepPrompt}
-          />
+          <HUD resources={state.resources} />
+        )}
+
+        {["playing", "interaction", "cinematic"].includes(phase) && (
+          <>
+            <DroneCompanion
+              mode={droneSpeaking ? "talk" : "dock"}
+              alert={alerts.some((alert) => alert.level === "critical")}
+              open={droneOpen}
+              onClick={toggleDrone}
+            />
+            <AnimatePresence>
+              {droneOpen && (
+                <DronePanel
+                  key="pip-panel"
+                  day={state.day}
+                  mission={story.mission}
+                  groups={groups}
+                  alerts={alerts}
+                  resources={state.resources}
+                  canSleep={canEndDay}
+                  decision={decision}
+                  onTrack={handleTrack}
+                  onAnswer={() => openDroneNode(decisionNode(story))}
+                  onSleep={handleEndDay}
+                  onClose={() => setDroneOpen(false)}
+                />
+              )}
+            </AnimatePresence>
+          </>
         )}
 
         {phase === "intro" && (
@@ -306,7 +444,7 @@ export default function App() {
         )}
 
         {phase === "briefing" && (
-          <BriefingModal day={day} onBegin={() => setPhase("playing")} />
+          <BriefingModal day={story} onBegin={() => setPhase("playing")} />
         )}
 
         {phase === "interaction" && active && (
@@ -352,21 +490,8 @@ export default function App() {
         </AnimatePresence>
 
         <AnimatePresence>
-          {hazards.length > 0 && ["playing", "interaction", "cinematic"].includes(phase) && (
-            <motion.aside className="hazard-stack" aria-label="Outpost hazard warnings" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 30 }}>
-              {hazards.map((hazard) => (
-                <motion.div key={hazard.title} className={`hazard-card hazard-${hazard.level}`} animate={{ scale: [1, 1.012, 1] }} transition={{ duration: 2.2, repeat: Infinity }}>
-                  <span className="hazard-symbol">!</span>
-                  <div><strong>{hazard.title}</strong><p>{hazard.detail}</p></div>
-                </motion.div>
-              ))}
-            </motion.aside>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
           {(phase === "sleeping" || phase === "waking") && (
-            <motion.div className={`day-transition ${phase === "sleeping" ? "night-transition" : "morning-transition"}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 3.2, ease: "easeInOut" }}>
+            <motion.div className={`day-transition ${phase === "sleeping" ? "night-transition" : "morning-transition"}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.7, ease: "easeOut" } }} transition={{ duration: 3.2, ease: "easeInOut" }}>
               <motion.div className="transition-text" initial={{ y: 18, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 1.1, duration: 1.8, ease: "easeInOut" }}>
                 <span>{phase === "sleeping" ? "END OF SOL" : "NEW SOL"}</span>
                 <h2>{phase === "sleeping" ? "Time to Rest, Crew" : "Sunrise on Mars"}</h2>

@@ -1,6 +1,9 @@
-import { motion } from "framer-motion";
 import PixelIcon from "./PixelIcon";
 
+/**
+ * The bars. Tasks, warnings and sleep now belong to PIP's panel, so the HUD
+ * keeps only the four systems the drone teaches on Sol 1.
+ */
 const METERS = [
   { key: "storedPower", label: "Power", icon: "bolt", color: "#ffd166" },
   { key: "lifeSupportCondition", label: "Air", icon: "drop", color: "#7ee0ff" },
@@ -27,95 +30,30 @@ function Meter({ label, icon, color, value }) {
   );
 }
 
-export default function HUD({
-  day,
-  location,
-  objectives,
-  resources,
-  onEndDay,
-  onTrack,
-  canEndDay,
-  showSleepPrompt,
-  constructionOnly = false,
-}) {
+export default function HUD({ resources }) {
   return (
-    <div className="hud" aria-label="Mission status">
-      <section className="hud-card hud-mission">
-        <p className="hud-kicker">
-          SOL {day} · {location}
-        </p>
-        <ul className="quest-list">
-          {objectives.map((objective) => {
-            const target = objective.nextTarget;
-            return (
-              <li key={objective.id}>
-                <button
-                  type="button"
-                  className={`quest ${objective.done ? "is-done" : ""}`}
-                  onClick={() => onTrack?.(target)}
-                  disabled={objective.done || !target}
-                  title={target ? "Walk here" : undefined}
-                >
-                  <span className="quest-icon">
-                    <PixelIcon name={objective.icon} size={11} />
-                  </span>
-                  <span className="quest-label">{objective.label}</span>
-                  {objective.progressMax > 0 ? (
-                    <span
-                      className="quest-pips"
-                      aria-label={`${objective.progress} of ${objective.progressMax}`}
-                    >
-                      {Array.from({ length: objective.progressMax }, (_, i) => (
-                        <span key={i} className={i < objective.progress ? "is-filled" : ""} />
-                      ))}
-                    </span>
-                  ) : (
-                    <span className="quest-check">{objective.done ? "★" : ""}</span>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+    <div className="hud" aria-label="Outpost systems">
+      <section className="hud-card hud-meters">
+        {METERS.map((meter) => (
+          <Meter
+            key={meter.key}
+            label={meter.label}
+            icon={meter.icon}
+            color={meter.color}
+            value={resources[meter.key] ?? 0}
+          />
+        ))}
+        <div className="parts">
+          <span className="parts-label">
+            <PixelIcon name="wrench" size={11} /> Parts
+          </span>
+          <span className="parts-pips" aria-label={`${resources.spareParts} spare parts`}>
+            {[0, 1, 2, 3].map((i) => (
+              <span key={i} className={i < resources.spareParts ? "is-filled" : ""} />
+            ))}
+          </span>
+        </div>
       </section>
-
-      <div className="hud-right">
-        {!constructionOnly && <section className="hud-card hud-meters">
-          {METERS.map((meter) => (
-            <Meter
-              key={meter.key}
-              label={meter.label}
-              icon={meter.icon}
-              color={meter.color}
-              value={resources[meter.key] ?? 0}
-            />
-          ))}
-          <div className="parts">
-            <span className="parts-label">
-              <PixelIcon name="wrench" size={11} /> Parts
-            </span>
-            <span className="parts-pips" aria-label={`${resources.spareParts} spare parts`}>
-              {[0, 1, 2, 3].map((i) => (
-                <span key={i} className={i < resources.spareParts ? "is-filled" : ""} />
-              ))}
-            </span>
-          </div>
-        </section>}
-
-        {showSleepPrompt && <motion.div className="hud-actions sleep-prompt" initial={{ opacity: 0, y: 14, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 360, damping: 26 }}>
-          <div className="sleep-copy"><strong>Time to sleep</strong><span>All primary objectives complete.</span></div>
-          <button
-            type="button"
-            className="sleep-button"
-            onClick={onEndDay}
-            disabled={!canEndDay}
-          >
-            <PixelIcon name="moon" size={12} />
-            End Day
-          </button>
-          <p className="hud-hint">End this Sol and send the crew to the Airlock.</p>
-        </motion.div>}
-      </div>
     </div>
   );
 }

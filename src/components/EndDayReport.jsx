@@ -72,7 +72,7 @@ export default function EndDayReport({ report, onContinue }) {
         <div className="vn-actions">
           <span className="vn-hint">Lights out, crew.</span>
           <button type="button" className="primary-button" onClick={onContinue}>
-            <PixelIcon name="moon" size={12} /> Sleep · Sol 2
+            <PixelIcon name="moon" size={12} /> Sleep · Sol {report.day + 1}
           </button>
         </div>
       </article>

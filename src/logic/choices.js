@@ -1,4 +1,5 @@
 import { applyEffects, canAfford, formatCost, payCost } from "./resources";
+import { completeSubtask } from "./missions";
 
 function unique(list) {
   return [...new Set(list)];
@@ -6,15 +7,19 @@ function unique(list) {
 
 /** Record that the commander has seen an interaction. */
 export function markSeen(state, targetId) {
-  if (state.seen.includes(targetId)) return state;
-  return { ...state, seen: [...state.seen, targetId] };
+  const seen = Array.isArray(state.seen) ? state.seen : [];
+  if (seen.includes(targetId)) return state;
+  return { ...state, seen: [...seen, targetId] };
 }
 
 /**
  * Applies one authored choice to the mission state and returns the next state.
- * The story layer supplies the choice; this function only knows costs/effects.
+ *
+ * The story layer supplies the choice; this function only knows costs, effects
+ * and which subtask (if any) the choice completes. A choice never marks a
+ * mission complete on its own — it asks the mission system to do it.
  */
-export function applyChoice(state, interaction, choice) {
+export function applyChoice(state, interaction, choice, options = {}) {
   if (!canAfford(state.resources, choice.cost)) {
     return {
       ok: false,
@@ -22,7 +27,7 @@ export function applyChoice(state, interaction, choice) {
     };
   }
 
-  const next = structuredClone(state);
+  let next = structuredClone(state);
 
   next.resources = payCost(next.resources, choice.cost);
   next.resources = applyEffects(next.resources, choice.effects);
@@ -43,11 +48,23 @@ export function applyChoice(state, interaction, choice) {
   next.decisions = { ...next.decisions, [interaction.targetId]: choice.id };
   next.seen = unique([...next.seen, interaction.targetId]);
 
+  // A choice may clear a persistent problem directly.
+  if (choice.clears) {
+    next.eventHistory = unique([...next.eventHistory, ...choice.clears]);
+  }
+
+  // The mission system owns completion, including the station it commissions.
+  if (choice.complete) {
+    next = completeSubtask(next, choice.complete, options.subtasks ?? []);
+  }
+
   return {
     ok: true,
     state: next,
     result: choice.result ?? "Done!",
     toast: choice.toast ?? `${interaction.title}: ${choice.label}`,
     scene: choice.scene ?? null,
+    // Branching stays in the data: the app simply opens the next node.
+    next: choice.next ?? null,
   };
 }

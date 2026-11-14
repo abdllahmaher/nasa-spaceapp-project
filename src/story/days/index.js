@@ -1,42 +1,170 @@
-import { DAY01 } from "./day01";
-import { DAY02 } from "./day02";
-import { DAY03 } from "./day03";
-import { DAY04 } from "./day04";
-import { DAY05 } from "./day05";
-export const DAYS = { 1: DAY01, 2: DAY02, 3: DAY03, 4: DAY04, 5: DAY05 };
-export function getDay(day) {
-  if (DAYS[day]) return DAYS[day];
-  // Later sols continue with a distinct rotating objective set and an honest
-  // label: a scheduled science watch, not a fabricated live weather forecast.
-  const template = [DAY03, DAY04, DAY05][(Math.max(6, day) - 6) % 3];
-  const rotation = [
-    ["Review the rover's dust readings", "Check the station seals", "Log the morning sky"],
-    ["Inspect the power junction", "Review the air intake", "Map the wind-shaped surface"],
-    ["Check the habitat pressure", "Review the water loop", "Complete the science log"],
-  ][day % 3];
-  const names = ["kai", "nova", "rex"];
-  const icons = ["bolt", "drop", "crew"];
-  const objectives = names.map((name, index) => ({
-    id: `sol${day}_${name}`,
-    icon: icons[index],
-    label: rotation[index],
-    targets: [name],
-    targetOpen: (target, state) => !state.seen.includes(target),
-    check: (state) => state.seen.includes(name),
+import { SOL01 } from "../../data/sols/sol01";
+import { SOL02 } from "../../data/sols/sol02";
+import { SOL03 } from "../../data/sols/sol03";
+import { SOL04 } from "../../data/sols/sol04";
+import { SOL05 } from "../../data/sols/sol05";
+import { crewTask, mergeNodes } from "../../data/sols/helpers";
+import { objectivesFromSubtasks } from "../../logic/missions";
+import { JEZERO_SITE } from "../../data/nasa/sources";
+
+/**
+ * The day layer.
+ *
+ * A Sol is authored as data (mission + subtasks + dialogue + events) and this
+ * module compiles it into the shape the rest of the game already speaks:
+ * `objectives` for the HUD and `interactions` for the chat bubble. Nothing
+ * downstream knows that missions exist — which is why the UI did not change.
+ */
+const SOLS = { 1: SOL01, 2: SOL02, 3: SOL03, 4: SOL04, 5: SOL05 };
+
+const ROTATION = [
+  {
+    icon: "bolt",
+    label: "Check the power reserve with Kai",
+    target: "kai",
+    why: "Reserves drift with the weather, so a reading every Sol keeps us honest.",
+  },
+  {
+    icon: "drop",
+    label: "Check the air and water with Nova",
+    target: "nova",
+    why: "Life support is the one system we can never let drift.",
+  },
+  {
+    icon: "crew",
+    label: "Collect Rex's surface report",
+    target: "rex",
+    why: "The surface changes every Sol. New streaks mean new wind directions.",
+  },
+];
+
+/** Sols beyond the authored five continue with a scheduled science watch. */
+function generatedSol(day) {
+  const subtasks = ROTATION.map((item) => ({
+    id: `sol${day}_${item.target}`,
+    icon: item.icon,
+    label: item.label,
+    target: item.target,
+    why: item.why,
+    how: "Walk to the crew member and confirm the check.",
   }));
-  const interactions = { ...template.interactions };
-  for (const [index, name] of names.entries()) {
-    const old = interactions[name];
-    interactions[name] = {
-      ...old,
-      eyebrow: `${old.eyebrow?.split(" · ")[0] ?? "CREW RADIO"} · SOL ${day}`,
-      title: `${old.title} · Sol ${day}`,
-      body: [
-        `Commander, this is ${name[0].toUpperCase() + name.slice(1)} checking in for Sol ${day}.`,
-        `${rotation[index]}. I've logged the inspection in today's mission record.`,
+
+  const dialogue = mergeNodes(
+    ...subtasks.map((subtask, index) =>
+      crewTask({
+        target: subtask.target,
+        speaker: subtask.target,
+        eyebrow: `CREW RADIO · SOL ${day}`,
+        title: ROTATION[index].label,
+        lines: [
+          `Commander, this is ${subtask.target[0].toUpperCase() + subtask.target.slice(1)} on Sol ${day}.`,
+          `${ROTATION[index].label}. I have the reading ready for you.`,
+        ],
+        why: [subtask.why, "Every check makes tomorrow's plan a little safer."],
+        subtaskId: subtask.id,
+        confirmLabel: "Log the reading",
+        detail: "Record the reading in today's mission log.",
+        result: "Logged, Commander. Nothing unusual today.",
+        toast: "Reading logged",
+      }),
+    ),
+  );
+
+  return {
+    day,
+    location: "Jezero Crater",
+    coordinates: JEZERO_SITE.coordinates,
+    mission: {
+      id: `science-watch-${day}`,
+      title: `Science Watch · Sol ${day}`,
+      brief: "A scheduled check of the outpost systems.",
+      why: "Routine checks catch small problems before they grow.",
+    },
+    briefing: {
+      kicker: `SOL ${day} · JEZERO`,
+      title: `Sol ${day}: science watch`,
+      speaker: "layla",
+      lines: [
+        `Welcome to Sol ${day}, crew. Today's checks are ready.`,
+        "Same outpost, same crew, three new readings to log.",
       ],
-    };
-  }
-  return { ...template, day, objectives, interactions, briefing: { ...template.briefing, kicker: `SOL ${day} · JEZERO`, title: `Sol ${day}: science watch`, lines: [`Welcome to Sol ${day}, crew. Today's checks are ready.`, ...template.briefing.lines.slice(1)], startLabel: `Start Sol ${day}` } };
+      hint: "Three crew check-ins complete the Sol.",
+      startLabel: `Start Sol ${day}`,
+      site: JEZERO_SITE,
+      weather: {
+        headline: "Settling haze",
+        level: "haze",
+        line: "Fine dust can hang in the air for days after a gust. This is an observed Jezero condition, not a forecast.",
+        issuedAt: "Jezero observations",
+        source: "NASA/JPL Perseverance observations",
+        sourceUrl: "https://science.nasa.gov/mars/the-mars-report/",
+      },
+    },
+    subtasks,
+    dialogue,
+    events: [],
+  };
 }
-export { DAY01, DAY02, DAY03, DAY04, DAY05 };
+
+/** Compiles one Sol of authored data into the runtime day object. */
+export function buildDay(sol) {
+  return {
+    day: sol.day,
+    location: sol.location,
+    coordinates: sol.coordinates,
+    mission: sol.mission,
+    subtasks: sol.subtasks,
+    events: sol.events ?? [],
+    decision: sol.decision ?? null,
+    briefing: sol.briefing,
+    objectives: objectivesFromSubtasks(sol.subtasks),
+    interactions: sol.dialogue,
+  };
+}
+
+/**
+ * Resolves story text against the save. A field may be a plain value or a
+ * function of state, which is how a Sol's briefing can remember yesterday.
+ */
+export function resolveDay(day, state) {
+  const value = (entry) => (typeof entry === "function" ? entry(state) : entry);
+  // A crew member can say different things as the Sol moves on (meet, then
+  // build), so an interaction entry may be a function of state.
+  const interactions = Object.fromEntries(
+    Object.entries(day.interactions ?? {}).map(([key, entry]) => [key, value(entry)]),
+  );
+  return {
+    ...day,
+    interactions,
+    mission: day.mission
+      ? {
+          ...day.mission,
+          brief: value(day.mission.brief),
+          why: value(day.mission.why),
+        }
+      : day.mission,
+    briefing: day.briefing
+      ? {
+          ...day.briefing,
+          title: value(day.briefing.title),
+          lines: value(day.briefing.lines) ?? [],
+          hint: value(day.briefing.hint),
+        }
+      : day.briefing,
+    decision: day.decision
+      ? {
+          ...day.decision,
+          title: value(day.decision.title),
+          question: value(day.decision.question),
+          stakes: value(day.decision.stakes),
+        }
+      : day.decision,
+  };
+}
+
+export function getDay(day) {
+  const sol = SOLS[day] ?? generatedSol(day);
+  return buildDay(sol);
+}
+
+export { SOL01, SOL02, SOL03, SOL04, SOL05 };

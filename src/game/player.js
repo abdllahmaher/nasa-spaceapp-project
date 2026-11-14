@@ -38,6 +38,7 @@ export function createPlayer() {
     fixTarget: null, // { entityId, worldX }
     fixHitTimer: 0,
     pendingInteraction: null,
+    autoStall: 0,
     // Click-to-move target: { x, y, faceX, targetId?, entityId?, label? }
     auto: null, // { targetId, entityId, label }
   };
@@ -57,10 +58,13 @@ export function updatePlayer(player, dt, input, entities, period) {
   if (player.auto) {
     if (userMoving) {
       player.auto = null;
+      player.autoStall = 0;
     } else {
       const dx = player.auto.x - player.x;
       const dy = (player.auto.y ?? player.y) - player.y;
-      if (Math.abs(dx) <= 4 && Math.abs(dy) <= 4) {
+      // Generous vertical tolerance: the ground is drawn in perspective, so an
+      // exact pixel match is not something a child should have to aim for.
+      if (Math.abs(dx) <= 6 && Math.abs(dy) <= 12) {
         player.x = player.auto.x;
         if (player.auto.y !== undefined) player.y = player.auto.y;
         const target = player.auto;
@@ -74,6 +78,8 @@ export function updatePlayer(player, dt, input, entities, period) {
         }
         player.facing = target.faceX >= player.x ? 1 : -1;
       } else {
+        const beforeX = player.x;
+        const beforeY = player.y;
         const distance = Math.hypot(dx, dy);
         const step = Math.min(distance, WORLD.playerSpeed * dt);
         if (distance > 0) {
@@ -82,6 +88,25 @@ export function updatePlayer(player, dt, input, entities, period) {
         }
         if (Math.abs(dx) > 1) player.facing = dx > 0 ? 1 : -1;
         autoMoving = true;
+
+        // Props are solid and the walk is a straight line, so a rock in the way
+        // would otherwise leave the commander shoving at it forever. If we stop
+        // making progress, take the interaction from where we stand instead.
+        const progress = Math.hypot(player.x - beforeX, player.y - beforeY);
+        player.autoStall = progress < 0.35 ? (player.autoStall ?? 0) + dt : 0;
+        if (player.autoStall > 1.1) {
+          const target = player.auto;
+          player.auto = null;
+          player.autoStall = 0;
+          const reachable = target && Math.abs((target.faceX ?? target.x) - player.x) < 220;
+          if (target?.targetId && reachable) {
+            player.pendingInteraction = {
+              targetId: target.targetId,
+              entityId: target.entityId,
+              label: target.label,
+            };
+          }
+        }
       }
     }
   }
@@ -98,7 +123,10 @@ export function updatePlayer(player, dt, input, entities, period) {
     }
 
     clampToArea(player, WORLD.walkArea);
-    resolveEntityCollisions(player, entities, period);
+    // A guided walk (task row, bubble "show me") is collision-free on purpose:
+    // the straight line to a crew member must always finish, otherwise a rock
+    // in the way silently swallows the task the player just clicked.
+    if (!autoMoving) resolveEntityCollisions(player, entities, period);
     clampToArea(player, WORLD.walkArea);
   }
 

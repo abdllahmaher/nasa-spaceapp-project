@@ -44,6 +44,31 @@ function portrait(name, role, accent, src, sheet, box) {
   };
 }
 
+/**
+ * PIP has no sprite sheet — he is a machine, so his portrait is drawn as a
+ * two-frame SVG (open eye, blink). Same contract as the crew: a source image,
+ * a clip of frame rectangles and a crop box.
+ */
+function dronePortrait(blink) {
+  const eye = blink
+    ? '<rect x="48" y="54" width="32" height="6" rx="3" fill="#2a1730"/><rect x="52" y="55" width="24" height="4" rx="2" fill="#7ee0ff"/>'
+    : '<rect x="46" y="46" width="36" height="22" rx="11" fill="#2a1730"/><rect x="52" y="51" width="24" height="12" rx="6" fill="#7ee0ff"/>';
+  return `<g>
+    <rect x="12" y="12" width="40" height="8" rx="4" fill="#ffd166" stroke="#2a1730" stroke-width="4"/>
+    <rect x="76" y="12" width="40" height="8" rx="4" fill="#ffd166" stroke="#2a1730" stroke-width="4"/>
+    <rect x="58" y="18" width="12" height="14" fill="#2a1730"/>
+    <rect x="24" y="30" width="80" height="62" rx="20" fill="#f5f0ff" stroke="#2a1730" stroke-width="5"/>
+    <rect x="30" y="82" width="68" height="8" rx="4" fill="#cbb8e6"/>
+    ${eye}
+    <rect x="54" y="76" width="20" height="6" rx="3" fill="#2a1730"/>
+    <rect x="38" y="92" width="8" height="14" rx="3" fill="#2a1730"/>
+    <rect x="82" y="92" width="8" height="14" rx="3" fill="#2a1730"/>
+  </g>`;
+}
+
+const DRONE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="128" viewBox="0 0 256 128">${dronePortrait(false)}<g transform="translate(128,0)">${dronePortrait(true)}</g></svg>`;
+const DRONE_SRC = `data:image/svg+xml;utf8,${encodeURIComponent(DRONE_SVG)}`;
+
 export const PORTRAITS = {
   layla: portrait("Layla", "Commander", "#ff9ecb", laylaUrl, laylaSheet, {
     x: 32,
@@ -69,4 +94,17 @@ export const PORTRAITS = {
     w: 52,
     h: 97,
   }),
+  drone: {
+    name: "PIP",
+    role: "Outpost Drone",
+    accent: "#7ee0ff",
+    src: DRONE_SRC,
+    sheet: { w: 256, h: 128 },
+    clip: [
+      { x: 0, y: 0, w: 128, h: 128 },
+      { x: 128, y: 0, w: 128, h: 128 },
+    ],
+    box: { x: 6, y: 6, w: 116, h: 116 },
+    fps: 2,
+  },
 };

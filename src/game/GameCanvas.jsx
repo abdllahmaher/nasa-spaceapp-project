@@ -32,6 +32,7 @@ export default function GameCanvas({
   paused = false,
   inputEnabled = true,
   startLanded = false,
+  builds = [],
   status = {},
   markers = {},
   cinematic = null,
@@ -57,6 +58,7 @@ export default function GameCanvas({
   const onIntroCompleteRef = useRef(onIntroComplete);
   const onCinematicDoneRef = useRef(onCinematicDone);
   const startLandedRef = useRef(startLanded);
+  const buildsRef = useRef(builds);
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -70,6 +72,7 @@ export default function GameCanvas({
     onInteractRef.current = onInteract;
     onIntroCompleteRef.current = onIntroComplete;
     onCinematicDoneRef.current = onCinematicDone;
+    buildsRef.current = builds;
   }, [
     paused,
     inputEnabled,
@@ -82,6 +85,7 @@ export default function GameCanvas({
     onInteract,
     onIntroComplete,
     onCinematicDone,
+    builds,
   ]);
 
   useEffect(() => {
@@ -121,15 +125,21 @@ export default function GameCanvas({
     let playerHidden = false;
     const airlock = entities.find((entity) => entity.id === "airlock");
 
+    const confirmedBuilds = () => new Set(buildsRef.current ?? []);
+
     if (startLandedRef.current) {
-      // Resuming: the outpost is already standing and the crew are at work.
+      // Resuming: the outpost keeps whatever the save says was commissioned.
       rocket?.behavior?.skip?.();
+      const ready = confirmedBuilds();
       for (const member of crew) {
         member.behavior?.show?.();
-        member.x = member.homeX ?? member.x;
+        const station = stationOf(member);
+        member.x = station && !ready.has(station.id) ? station.x : member.homeX ?? member.x;
         member.introPhase = "done";
       }
-      for (const entity of entities) entity.behavior?.finish?.();
+      for (const entity of entities) {
+        if (entity.behavior?.finish && ready.has(entity.id)) entity.behavior.finish();
+      }
     }
 
     const ready = () => panoramas.length > 0 && spritesheet !== null;
@@ -290,11 +300,23 @@ export default function GameCanvas({
       }
     };
 
+    /**
+     * Crew walk to their station and wait there. Nothing is assembled until the
+     * Commander confirms the build in that crew member's chat.
+     */
     const updateCrewBuilds = () => {
+      const ready = confirmedBuilds();
       for (const member of crew) {
         const station = stationOf(member);
+        const isReady = station ? ready.has(station.id) : true;
 
         if (member.introPhase === "walk" && !member.behavior?.isBusy?.()) {
+          member.introPhase = isReady ? "build" : "waiting";
+          if (isReady) {
+            member.behavior?.work?.(BUILD_SECONDS, false);
+            station?.behavior?.build?.();
+          }
+        } else if (member.introPhase === "waiting" && isReady) {
           member.introPhase = "build";
           member.behavior?.work?.(BUILD_SECONDS, false);
           station?.behavior?.build?.();
@@ -304,6 +326,34 @@ export default function GameCanvas({
         } else if (member.introPhase === "home" && !member.behavior?.isBusy?.()) {
           member.introPhase = "done";
         }
+      }
+    };
+
+    /**
+     * Construction after the landing: a confirmed station walks its specialist
+     * over and assembles it, then the crew member returns to their post.
+     */
+    const updateConstruction = () => {
+      const ready = confirmedBuilds();
+      for (const member of crew) {
+        const station = stationOf(member);
+        if (!station || !ready.has(station.id)) continue;
+        const built = station.behavior?.isBuilt?.() ?? true;
+        if (built) {
+          if (member.buildJob) {
+            member.buildJob = false;
+            member.behavior?.walkTo?.(member.homeX ?? member.x);
+          }
+          continue;
+        }
+        if (member.behavior?.isBusy?.()) continue;
+        if (!member.buildJob) {
+          member.buildJob = true;
+          member.behavior?.walkTo?.(station.x - (station.approach ?? 56) / period);
+          continue;
+        }
+        member.behavior?.work?.(BUILD_SECONDS, false);
+        station.behavior?.build?.();
       }
     };
 
@@ -330,7 +380,7 @@ export default function GameCanvas({
 
       updateCrewBuilds();
 
-      if (crew.every((member) => member.introPhase === "done")) {
+      if (crew.every((member) => member.introPhase === "done" || member.introPhase === "waiting")) {
         introWait += dt;
         if (introWait > 0.9) {
           introDone = true;
@@ -521,10 +571,12 @@ export default function GameCanvas({
       const interaction = entity.interactive;
       const offset = Math.max(48, Math.min(96, (entity.footR ?? 24) + 46));
       const side = player.x <= worldX ? -1 : 1;
+      // Never aim outside the walkable strip, or the walk can never finish.
+      const stopY = Math.max(WORLD.walkArea.minY, Math.min(WORLD.walkArea.maxY, entity.y));
 
       player.auto = {
         x: worldX + side * offset,
-        y: entity.y,
+        y: stopY,
         faceX: worldX,
         targetId: interaction?.targetId ?? null,
         entityId: entity.id,
@@ -591,6 +643,7 @@ export default function GameCanvas({
           return;
         }
 
+        updateConstruction();
         updateTask(dt);
         updateCrewTransition(dt);
         const focused = Boolean(task || crewTransition);

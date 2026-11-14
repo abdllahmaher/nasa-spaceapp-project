@@ -6,7 +6,7 @@
  */
 export function createInitialState() {
   return {
-    version: 2,
+    version: 3,
     day: 1,
     resources: {
       storedPower: 100,
@@ -31,6 +31,11 @@ export function createInitialState() {
     seen: [],
     decisions: {},
     completedEvents: [],
+    // PIP keeps his own memory: the tour, alerts already delivered, and which
+    // Sol he has already greeted or nudged.
+    drone: { step: "greet", seenAlerts: [], morningSeen: 0, nudgedDay: 0, meetIntroSeen: false },
+    // One answer per Sol, kept forever so later Sols can react to it.
+    decisionsByDay: {},
     lastReport: null,
   };
 }
